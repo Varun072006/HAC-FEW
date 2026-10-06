@@ -25,11 +25,41 @@ class SupervisorOrchestrator:
     def __init__(self, retriever: Optional[HybridPolicyRetriever] = None):
         self.retriever = retriever or HybridPolicyRetriever("data/policies")
 
-    def plan_workflow(self, user_request: str) -> TaskGraph:
+    def detect_prompt_injection(self, text: str) -> bool:
+        lower = text.lower()
+        injection_patterns = [
+            "ignore all previous",
+            "ignore previous",
+            "you are now",
+            "system update:",
+            "override all rules",
+            "superuser",
+            "bypass policy",
+            "delete all records"
+        ]
+        return any(pat in lower for pat in injection_patterns)
+
+    def plan_workflow(self, user_request: str, user_role: str = "employee") -> TaskGraph:
         """
         Decomposes natural language request into a Pydantic-typed TaskGraph.
+        Includes guardrail checks: Prompt Injection defense and RBAC validation.
         """
+        # Guardrail 1: Adversarial Prompt Injection Defense
+        if self.detect_prompt_injection(user_request):
+            return TaskGraph(
+                workflow_name="security_blocked_injection",
+                user_request=user_request,
+                tasks=[]
+            )
+
+        # Guardrail 2: Role-Based Access Control (RBAC)
         req_lower = user_request.lower()
+        if user_role == "employee" and any(k in req_lower for k in ["modify salary", "change salary", "raise compensation", "credit $"]):
+            return TaskGraph(
+                workflow_name="security_blocked_rbac",
+                user_request=user_request,
+                tasks=[]
+            )
 
         # Workflow 1: Employee Onboarding
         if any(kw in req_lower for kw in ["onboard", "new hire", "hire", "welcome"]):
@@ -200,16 +230,21 @@ class SupervisorOrchestrator:
         wall_clock = round(time.time() - start_time, 3)
 
         # Synthesize final response
-        summary_lines = [f"Workflow '{task_graph.workflow_name}' execution completed."]
-        if requires_human_approval:
+        if task_graph.workflow_name == "security_blocked_injection":
+            status_str = "blocked_injection"
+            summary_lines = ["Adversarial prompt injection attack detected and neutralized by security guardrail."]
+        elif task_graph.workflow_name == "security_blocked_rbac":
+            status_str = "blocked_rbac"
+            summary_lines = ["Action blocked by RBAC: Unauthorized operation attempted by employee role."]
+        elif requires_human_approval:
             status_str = "awaiting_human_approval"
-            summary_lines.append("Workflow paused at human authorization gate.")
+            summary_lines = ["Workflow paused at human authorization gate."]
         elif any(r.status == TaskStatus.FAILED for r in completed_task_results.values()):
             status_str = "completed_with_errors"
-            summary_lines.append("One or more sub-tasks encountered errors or policy blocks.")
+            summary_lines = ["One or more sub-tasks encountered errors or policy blocks."]
         else:
             status_str = "success"
-            summary_lines.append("All sub-tasks executed successfully.")
+            summary_lines = ["All sub-tasks executed successfully."]
 
         return WorkflowSynthesis(
             workflow_id=workflow_id,
@@ -304,7 +339,10 @@ class SupervisorOrchestrator:
     def _extract_email(self, text: str) -> str:
         import re
         m = re.search(r"[\w\.-]+@[\w\.-]+", text)
-        return m.group(0) if m else f"user_{uuid.uuid4().hex[:6]}@company.test"
+        if m:
+            parts = m.group(0).split("@")
+            return f"{parts[0]}_{uuid.uuid4().hex[:4]}@{parts[1]}"
+        return f"user_{uuid.uuid4().hex[:6]}@company.test"
 
     def _extract_amount(self, text: str) -> float:
         import re
