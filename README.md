@@ -1,5 +1,5 @@
-# Hierarchical Agent Coordination Framework for Complex Enterprise Workflows
-> **S-5 Mini Project** | Assumed Duration: 12 Weeks
+# HAC-FEW: Hierarchical Agent Coordination Framework for Complex Enterprise Workflows
+> **S-5 Mini Project** | Assumed Duration: 12 Weeks | Repository: `Varun072006/HAC-FEW`
 
 A governed, observable multi-agent system where a central **Supervisor Agent** plans, decomposes, and coordinates domain-specialized enterprise agents (**HR**, **Finance**, **IT**) executing complex workflows with deterministic schema contracts, policy-grounded RAG, typed tool execution, and human-in-the-loop approvals.
 
@@ -9,34 +9,34 @@ A governed, observable multi-agent system where a central **Supervisor Agent** p
 
 ```mermaid
 graph TD
-    User([Enterprise User / Web UI]) --> Gateway[API Gateway (FastAPI, Auth, RBAC)]
-    Gateway --> Sup[Supervisor Agent (LangGraph Planner)]
+    User(["Enterprise User / Web UI"]) --> Gateway["API Gateway (FastAPI, Auth, RBAC)"]
+    Gateway --> Sup["Supervisor Agent (LangGraph Planner)"]
     
     subgraph Core Coordination
-        Sup --> Scheduler[Execution Scheduler]
-        Scheduler --> PEngine[Governance Policy Engine]
-        PEngine -->|Risk Check & Approvals| ExecutionGate{Approval Gate}
+        Sup --> Scheduler["Execution Scheduler"]
+        Scheduler --> PEngine["Governance Policy Engine"]
+        PEngine -->|Risk Check & Approvals| ExecutionGate{"Approval Gate"}
     end
     
-    ExecutionGate -->|Dispatched Subtasks| HRAgent[HR Agent]
-    ExecutionGate -->|Dispatched Subtasks| FinAgent[Finance Agent]
-    ExecutionGate -->|Dispatched Subtasks| ITAgent[IT Agent]
+    ExecutionGate -->|Dispatched Subtasks| HRAgent["HR Agent"]
+    ExecutionGate -->|Dispatched Subtasks| FinAgent["Finance Agent"]
+    ExecutionGate -->|Dispatched Subtasks| ITAgent["IT Agent"]
     
     subgraph Shared Services
-        RAG[RAG Engine (pgvector + bge-small)]
-        Audit[Immutable Audit Log (PostgreSQL)]
-        Traces[Observability (Langfuse)]
+        RAG["RAG Engine (pgvector + bge-small)"]
+        Audit["Immutable Audit Log (PostgreSQL)"]
+        Traces["Observability (Langfuse)"]
     end
     
     HRAgent --> RAG
     FinAgent --> RAG
     ITAgent --> RAG
     
-    HRAgent --> Tools[Typed Tool Layer]
+    HRAgent --> Tools["Typed Tool Layer"]
     FinAgent --> Tools
     ITAgent --> Tools
     
-    Tools --> MockSystems[Mock Enterprise Systems (HRMS, ERP, Ticketing)]
+    Tools --> MockSystems["Mock Enterprise Systems (HRMS, ERP, Ticketing)"]
 ```
 
 ---
@@ -98,4 +98,4 @@ uvicorn apps.api.main:app --reload --port 8000
 
 For full specifications and test cases, see [`docs/WORKFLOW_SPECS.md`](file:///docs/WORKFLOW_SPECS.md).
 For project review basis and evaluation plan, see [`docs/ZEROTH_REVIEW.md`](file:///docs/ZEROTH_REVIEW.md).
-# HAC-FEW
+For the comprehensive Graph Architecture specification, see [`docs/AGENT_GRAPH_ARCHITECTURE.md`](file:///docs/AGENT_GRAPH_ARCHITECTURE.md).
