@@ -89,12 +89,14 @@ class ERPPayrollSetupInput(BaseModel):
     base_salary: float = 95000.0
 
 
-def erp_submit_expense(agent: str, params: Dict[str, Any]) -> ToolExecutionResponse:
+def erp_submit_expense(agent: str, params: Dict[str, Any], approved_by: Optional[str] = None) -> ToolExecutionResponse:
+    """`approved_by` is only supplied by the platform engine after the approval service has
+    recorded the required human decisions; it releases the human-approval gate for this call."""
     decision = GovernancePolicyEngine.evaluate_tool_execution(agent, "erp_submit_expense", params)
     if not decision.allowed:
         return ToolExecutionResponse(success=False, tool_name="erp_submit_expense", error=decision.reason, policy_decision=decision)
 
-    if decision.requires_human_approval:
+    if decision.requires_human_approval and not approved_by:
         # Route to approval state
         GovernancePolicyEngine.log_audit_event(
             actor_agent=agent, action="erp_submit_expense", target_system="ERP-Finance",
@@ -107,12 +109,17 @@ def erp_submit_expense(agent: str, params: Dict[str, Any]) -> ToolExecutionRespo
             policy_decision=decision
         )
 
-    res = mock_client.post("/erp/expenses/submit", json=params)
+    payload = dict(params)
+    if approved_by:
+        payload["pre_approved_by"] = approved_by
+    res = mock_client.post("/erp/expenses/submit", json=payload)
     if res.status_code == 200:
         data = res.json()["expense"]
         GovernancePolicyEngine.log_audit_event(
             actor_agent=agent, action="erp_submit_expense", target_system="ERP-Finance",
-            payload=params, risk_level=decision.risk_level.value, status="auto_approved"
+            payload=params, risk_level=decision.risk_level.value,
+            status="human_approved" if approved_by else "auto_approved",
+            reason=f"Approved by {approved_by}" if approved_by else None
         )
         return ToolExecutionResponse(success=True, tool_name="erp_submit_expense", data=data, policy_decision=decision)
     return ToolExecutionResponse(success=False, tool_name="erp_submit_expense", error=res.json().get("detail", "Error"))

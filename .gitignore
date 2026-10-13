@@ -40,6 +40,9 @@ htmlcov/
 # Database & Storage
 *.sqlite3
 *.db
+*.db-wal
+*.db-shm
+.hacfew/
 pgdata/
 
 # Node / Web UI
@@ -60,3 +63,7 @@ Desktop.ini
 # Logs
 logs/
 *.log
+
+# Console build output
+apps/console/dist/
+apps/console/e2e/out/

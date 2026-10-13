@@ -1,0 +1,83 @@
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+@import 'tailwindcss';
+@import '@xyflow/react/dist/style.css';
+
+/*
+ * HAC-FEW design tokens. Light-mode first, Minimalism & Swiss: 1px rules instead of shadows,
+ * semantic colour tokens only. Text-safe variants (-ink) exist because the approved base greens
+ * and reds do not reach 4.5:1 as text; see docs/DESIGN_SYSTEM.md and scripts/contrast.mjs.
+ */
+@theme {
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --color-canvas: #f8fafc;
+  --color-surface: #ffffff;
+  --color-line: #cbd5e1;          /* decorative dividers and card edges */
+  --color-line-strong: #64748b;   /* control boundaries (3:1 non-text contrast) */
+  --color-ink: #0f172a;
+  --color-ink-2: #475569;
+  --color-navy: #1e3a5f;
+  --color-navy-tint: #eef2f7;
+  --color-link: #2563eb;
+  --color-link-tint: #eff6ff;
+  --color-muted-tint: #f1f5f9;
+
+  --color-ok: #16a34a;            /* graphics only (3.3:1) */
+  --color-ok-ink: #15803d;        /* text-safe */
+  --color-ok-tint: #f0fdf4;
+  --color-warn: #b45309;
+  --color-warn-tint: #fffbeb;
+  --color-bad: #dc2626;
+  --color-bad-ink: #b91c1c;
+  --color-bad-tint: #fef2f2;
+
+  --text-2xs: 0.6875rem;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+}
+
+@layer base {
+  html { color-scheme: light; }
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-weight: 600; letter-spacing: -0.01em; }
+  button, [role='button'], select, summary, label[for] { cursor: pointer; }
+  button:disabled { cursor: not-allowed; }
+  :focus-visible {
+    outline: 2px solid var(--color-link);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  code, pre, .mono { font-family: var(--font-mono); font-feature-settings: 'zero' 1; }
+  .tnum { font-variant-numeric: tabular-nums; }
+}
+
+/* React Flow, restyled to the system */
+.react-flow { --xy-edge-stroke-default: #64748b; --xy-edge-stroke-width-default: 1.5; --xy-background-color-default: var(--color-canvas); }
+.react-flow__attribution { display: none; }
+.react-flow__handle { width: 10px; height: 10px; background: var(--color-surface); border: 1.5px solid var(--color-navy); }
+.react-flow__handle:hover, .react-flow__handle.connectingto { background: var(--color-link); }
+.react-flow__edge.selected .react-flow__edge-path, .react-flow__edge:focus .react-flow__edge-path { stroke: var(--color-link); stroke-width: 2.5; }
+.react-flow__controls { box-shadow: none; border: 1px solid var(--color-line); border-radius: 6px; overflow: hidden; }
+.react-flow__controls-button { border-bottom: 1px solid var(--color-line); background: var(--color-surface); }
+.react-flow__minimap { border: 1px solid var(--color-line); border-radius: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(37 99 235 / 0.45); } 100% { box-shadow: 0 0 0 8px rgb(37 99 235 / 0); } }
+.pulse-ring { animation: pulse-ring 1.4s ease-out infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin { animation: spin 0.9s linear infinite; }

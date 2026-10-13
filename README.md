@@ -14,6 +14,45 @@ A governed, observable multi-agent system where a central **Supervisor Agent** p
 
 ---
 
+## 🖥 HAC-FEW Console (React) and platform API
+
+A production-oriented control plane lives beside the original Streamlit demo: an authenticated FastAPI platform API
+(`apps/api`, `core/platform`) and a React + TypeScript console (`apps/console`). It persists workflows, runs, execution events,
+approvals and a hash-chained audit trail, and executes workflows on the real policy engine and tools.
+
+```bash
+# 1. Backend (Python 3.10+; a venv is recommended)
+python -m venv .venv && . .venv/bin/activate        # Windows: .venv\Scriptsctivate
+pip install -r requirements.txt
+python -m uvicorn apps.api.main:app --port 8000      # dev accounts are seeded on first start
+
+# 2. Console
+cd apps/console && npm install
+npm run dev                                          # http://localhost:5173 (proxies /api to :8000)
+#   Different console port: HACFEW_CONSOLE_PORT=3000 npm run dev
+#   API on another port?    HACFEW_API_URL=http://127.0.0.1:8010 npm run dev
+```
+
+Sign in with a seeded development account (`admin`, `manager`, `director`, `controller`, `hr`, `it`, `employee`).
+The password is `hacfew-dev` unless you set `HACFEW_DEV_PASSWORD`. Accounts exist only when `HACFEW_ENV=development`.
+Try it: open **Workflows → Expense reimbursement → Use template → Save → Run** with an amount of `350` as `manager`, then sign in as
+`director` and approve it under **Approvals**. Using `2400` needs both `director` and `controller`.
+
+* Contracts, event feed and approval guarantees: [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md)
+* Tokens, measured contrast and what was not verified: [docs/DESIGN_SYSTEM.md](docs/DESIGN_SYSTEM.md)
+* Tests: `python -m pytest` (backend, incl. approvals, authorization, restart recovery), `cd apps/console && npm test && npm run typecheck`,
+  and an optional browser journey: `npx playwright install chromium && npm run e2e`.
+* The original Streamlit console still runs (`python -m streamlit run apps/web/app.py`). Its approval tab is a legacy,
+  unauthenticated view and is labelled as such; the legacy `POST /workflows/run` endpoint is off unless `HACFEW_ENABLE_LEGACY_API=1`.
+
+**Known gaps** (deliberately not faked): no user-management UI or SSO (accounts are seeded; production seeds none, so create users
+directly in the DB until an admin flow exists); no Alembic migrations yet (tables are created with `create_all`); audit appends are
+serialised per process only; connector settings are read-only (no credential store); the planner is rule-based, so there is no model
+or token usage to report; workflows execute their steps sequentially in dependency order; the Docker image changes are untested;
+node-editor edge wiring is pointer-only.
+
+---
+
 ## 🏗 Architecture & Visualizations
 
 ### 1. System Architecture Diagram
@@ -102,21 +141,23 @@ HAC-FEW was benchmarked against a flat **Single-Agent Baseline** using an automa
 ```
 .
 ├── apps/
-│   ├── api/             # FastAPI Gateway (Auth, RBAC, Routing)
-│   └── web/             # Interactive Streamlit Web Console & Trace UI
+│   ├── api/             # FastAPI platform API (auth, workflows, runs, approvals, audit)
+│   ├── console/         # React + TypeScript console (Vite, Tailwind, React Flow)
+│   └── web/             # Original Streamlit console (legacy, still runnable)
 ├── core/
 │   ├── supervisor/      # Planner, Scheduler, Replanner, Synthesizer, Schemas
 │   ├── agents/          # HR, Finance, IT department agents
 │   ├── tools/           # Typed tool wrappers for mock systems
 │   ├── rag/             # Section chunker, hybrid retriever & NetworkX GraphRAG
-│   └── governance/      # Policy Engine, RBAC, Approval Gate, Audit Logging
+│   ├── governance/      # Policy Engine, RBAC, Approval Gate, Audit Logging
+│   └── platform/        # Execution engine, approvals service, auth, audit chain, node catalog
 ├── mock_systems/        # Simulated HRMS, ERP, and Ticketing REST APIs & DB seed
 ├── data/
 │   └── policies/        # Synthetic enterprise policy documents (HR, Finance, IT)
 ├── eval/                # Benchmark scenarios, automated test runner & comparison charts
 ├── Images/              # System architecture and module diagrams
 ├── docs/                # Academic report, review presentation script, architecture specs
-├── tests/               # 20 passing unit and integration tests
+├── tests/               # Backend tests (original 20 + platform API, approvals, authz, recovery)
 ├── docker-compose.yml   # Multi-container orchestration (Postgres+pgvector, API, Mocks)
 └── requirements.txt     # Python dependencies
 ```

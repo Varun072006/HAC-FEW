@@ -314,6 +314,11 @@ graph TD
 # --- TAB 5: HUMAN APPROVAL GATE ---
 with tabs[4]:
     st.subheader("Human-in-the-Loop (HITL) Gate")
+    st.warning(
+        "Legacy view. Decisions made here are not authenticated, are not audited, and do not resume any workflow. "
+        "Workflow approvals (separation of duties, dual approval, exactly-once execution) live in the HAC-FEW "
+        "console: see apps/console and the README."
+    )
     st.write("Requests requiring human authorization under the 3-Tier Governance Matrix (e.g. expenses > $100, access elevation).")
     
     # Check database for items awaiting approval

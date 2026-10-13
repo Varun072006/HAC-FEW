@@ -12,12 +12,20 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 httpx>=0.27.0
 python-multipart>=0.0.9
+pyjwt>=2.8.0
 
 # Database & Vectors
 sqlalchemy>=2.0.35
 psycopg2-binary>=2.9.9
 pgvector>=0.3.2
 alembic>=1.13.2
+
+# Imported by the retriever, GraphRAG and the Streamlit console (were missing)
+scikit-learn>=1.4.0
+numpy>=1.26.0
+networkx>=3.2
+matplotlib>=3.8.0
+streamlit>=1.35.0
 
 # RAG & Embeddings
 sentence-transformers>=3.0.0

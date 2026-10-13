@@ -16,6 +16,43 @@ from mock_systems.db import SessionLocal
 from mock_systems.models import AuditLog
 
 
+# --- Shared governance constants (read by the platform API so the UI never drifts from the engine) ---
+AGENT_TOOL_PERMISSIONS = {
+    "hr": ["hrms_create_employee", "hrms_get_employee", "rag_retrieve_policy"],
+    "finance": ["erp_submit_expense", "erp_get_expense", "erp_setup_payroll", "rag_retrieve_policy"],
+    "it": ["ticketing_create_ticket", "ticketing_get_ticket", "notifications_send_email", "rag_retrieve_policy"],
+}
+EXPENSE_AUTO_APPROVE_BELOW = 100.0
+EXPENSE_DUAL_APPROVAL_ABOVE = 1000.0
+
+RULES_CATALOG = [
+    {"rule_id": "RULE-RBAC-001", "tool": "*", "risk": "high", "outcome": "blocked",
+     "description": "Agent calls a tool outside its allow-list."},
+    {"rule_id": "RULE-FIN-REC-001", "tool": "erp_submit_expense", "risk": "low", "outcome": "blocked",
+     "description": "Expense without an itemized receipt is not reimbursable [POL-FIN-002 Section 3]."},
+    {"rule_id": "RULE-FIN-TIER-3", "tool": "erp_submit_expense", "risk": "high", "outcome": "approval_required",
+     "description": "Expense above $1,000 requires dual approval: Director and Controller [POL-FIN-002 Section 1]."},
+    {"rule_id": "RULE-FIN-TIER-2", "tool": "erp_submit_expense", "risk": "medium", "outcome": "approval_required",
+     "description": "Expense from $100 to $1,000 requires Line Manager approval [POL-FIN-002 Section 1]."},
+    {"rule_id": "RULE-FIN-TIER-1", "tool": "erp_submit_expense", "risk": "low", "outcome": "auto_approved",
+     "description": "Expense below $100 with a valid receipt is auto-approved [POL-FIN-002 Section 1]."},
+    {"rule_id": "RULE-FIN-PAYROLL-001", "tool": "erp_setup_payroll", "risk": "medium", "outcome": "allowed",
+     "description": "Initial payroll registration for a verified employee."},
+    {"rule_id": "RULE-IT-EMAIL-001", "tool": "notifications_send_email", "risk": "medium", "outcome": "allowed",
+     "description": "Stakeholder notification dispatch."},
+    {"rule_id": "RULE-STD-WRITE-001", "tool": "hrms_create_employee, ticketing_create_ticket", "risk": "medium",
+     "outcome": "allowed", "description": "Reversible operational write, logged."},
+    {"rule_id": "RULE-READ-001", "tool": "read-only tools", "risk": "low", "outcome": "allowed",
+     "description": "Read-only query."},
+]
+
+# Approver slots per rule: each inner list is the set of roles that may fill one required approval.
+APPROVAL_SLOTS = {
+    "RULE-FIN-TIER-2": [["manager", "director", "admin"]],
+    "RULE-FIN-TIER-3": [["director"], ["controller"]],
+}
+
+
 class GovernanceDecision(BaseModel):
     allowed: bool
     requires_human_approval: bool = False
@@ -38,12 +75,6 @@ class GovernancePolicyEngine:
         agent = agent.lower()
 
         # 1. RBAC Allow-List Validation
-        AGENT_TOOL_PERMISSIONS = {
-            "hr": ["hrms_create_employee", "hrms_get_employee", "rag_retrieve_policy"],
-            "finance": ["erp_submit_expense", "erp_get_expense", "erp_setup_payroll", "rag_retrieve_policy"],
-            "it": ["ticketing_create_ticket", "ticketing_get_ticket", "notifications_send_email", "rag_retrieve_policy"]
-        }
-
         allowed_tools = AGENT_TOOL_PERMISSIONS.get(agent, [])
         if tool_name not in allowed_tools:
             GovernancePolicyEngine.log_audit_event(
@@ -80,7 +111,7 @@ class GovernancePolicyEngine:
                 )
 
             # High Value (> $1,000)
-            if amount > 1000.0:
+            if amount > EXPENSE_DUAL_APPROVAL_ABOVE:
                 return GovernanceDecision(
                     allowed=True,
                     requires_human_approval=True,
@@ -91,7 +122,7 @@ class GovernancePolicyEngine:
                 )
 
             # Moderate Value ($100 to $1,000)
-            if amount >= 100.0:
+            if amount >= EXPENSE_AUTO_APPROVE_BELOW:
                 return GovernanceDecision(
                     allowed=True,
                     requires_human_approval=True,

@@ -99,6 +99,8 @@ class ExpenseSubmitRequest(BaseModel):
     currency: str = "USD"
     receipt_attached: bool = True
     description: str
+    # Set only by the platform after human approval has been recorded by the approval service.
+    pre_approved_by: Optional[str] = None
 
 
 @app.post("/erp/payroll/setup", tags=["ERP-Finance"])
@@ -125,6 +127,8 @@ def submit_expense(req: ExpenseSubmitRequest, db: Session = Depends(get_db)):
     # Determine status based on financial rules
     if not req.receipt_attached:
         exp_status = "rejected"
+    elif req.pre_approved_by:
+        exp_status = "approved"
     elif req.amount < 100.0:
         exp_status = "approved"
     else:
@@ -138,7 +142,8 @@ def submit_expense(req: ExpenseSubmitRequest, db: Session = Depends(get_db)):
         currency=req.currency,
         receipt_attached=req.receipt_attached,
         description=req.description,
-        status=exp_status
+        status=exp_status,
+        approved_by=req.pre_approved_by if exp_status == "approved" and req.pre_approved_by else None
     )
     db.add(record)
     db.commit()
@@ -151,7 +156,8 @@ def submit_expense(req: ExpenseSubmitRequest, db: Session = Depends(get_db)):
             "category": record.category,
             "amount": record.amount,
             "status": record.status,
-            "receipt_attached": record.receipt_attached
+            "receipt_attached": record.receipt_attached,
+            "approved_by": record.approved_by
         }
     }
 
