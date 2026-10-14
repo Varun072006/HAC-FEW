@@ -28,6 +28,7 @@ wheels/
 
 # Testing & Linters
 .pytest_cache/
+.pytest_tmp/
 .coverage
 htmlcov/
 .mypy_cache/
