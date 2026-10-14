@@ -5,9 +5,9 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-RunStatus = Literal["queued", "running", "awaiting_approval", "completed", "failed", "rejected"]
-NodeStatus = Literal["pending", "running", "awaiting_approval", "completed", "failed", "skipped", "rejected"]
-ApprovalStatus = Literal["pending", "approved", "rejected"]
+RunStatus = Literal["queued", "running", "awaiting_approval", "completed", "partial", "failed", "rejected", "cancelled"]
+NodeStatus = Literal["pending", "running", "awaiting_approval", "completed", "failed", "skipped", "rejected", "cancelled"]
+ApprovalStatus = Literal["pending", "approved", "rejected", "cancelled"]
 RiskTier = Literal["low", "medium", "high"]
 
 
@@ -72,6 +72,7 @@ class ValidationIssue(BaseModel):
     code: str
     message: str
     node_id: Optional[str] = None
+    category: Optional[str] = Field(default=None, description="planning_failure | policy_rejection | budget_exceeded")
 
 
 class ValidationResult(BaseModel):
@@ -168,6 +169,26 @@ class ToolCallOut(BaseModel):
     error: Optional[str] = None
 
 
+class OperationOut(BaseModel):
+    index: int
+    tool: str
+    effect: str
+    replayed: bool = False
+    latency_ms: Optional[int] = None
+    approved_by: Optional[str] = None
+    evidence_count: int = 0
+    abstained: bool = False
+
+
+class UsageOut(BaseModel):
+    calls: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    source: str = Field(default="none", description="provider | estimated | mixed | none. Never invented.")
+    cost_usd: Optional[float] = Field(default=None, description="Always null: no price table is configured.")
+
+
 class NodeRunOut(BaseModel):
     node_id: str
     node_type: str
@@ -184,6 +205,14 @@ class NodeRunOut(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     latency_ms: Optional[int] = None
+    agent_version: Optional[int] = None
+    delegation: list[str] = Field(default_factory=list, description="Delegation chain, supervisor first.")
+    failure_class: Optional[str] = None
+    usage: Optional[UsageOut] = None
+    operations: list[OperationOut] = Field(default_factory=list)
+    evidence: list[str] = Field(default_factory=list)
+    criticality: Optional[str] = None
+    pending_tool: Optional[str] = None
 
 
 class RunSummary(BaseModel):
@@ -197,6 +226,7 @@ class RunSummary(BaseModel):
     created_at: datetime
     finished_at: Optional[datetime] = None
     error: Optional[str] = None
+    objective: Optional[str] = None
 
 
 class RunList(BaseModel):
@@ -225,6 +255,8 @@ class ApprovalOut(BaseModel):
     reason: str
     tool_name: str
     agent: str
+    op_index: int = 0
+    evidence: list[Any] = Field(default_factory=list)
     params: dict[str, Any]
     required_slots: list[list[str]]
     filled_slots: list[int]
@@ -251,6 +283,11 @@ class RunDetail(RunSummary):
     node_runs: list[NodeRunOut]
     approvals: list[ApprovalOut]
     last_seq: int
+    budget: dict[str, Any] = Field(default_factory=dict)
+    usage: UsageOut = Field(default_factory=UsageOut)
+    tool_calls_used: int = 0
+    plan_id: Optional[str] = None
+    cancel_requested: bool = False
 
 
 class RunEventOut(BaseModel):
@@ -278,6 +315,83 @@ class AgentOut(BaseModel):
     node_types: list[str]
     node_runs: int
     failures: int
+    level: int = 1
+    status: Literal["active", "disabled", "archived"] = "active"
+    version: int = 1
+    capabilities: list[str] = Field(default_factory=list)
+    model_provider: str = "deterministic"
+    permissions: dict[str, bool] = Field(default_factory=dict)
+
+
+class AgentDetail(AgentOut):
+    description: str = ""
+    config: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+
+class AgentVersionOut(BaseModel):
+    version: int
+    created_by: str
+    created_at: datetime
+    change_note: Optional[str] = None
+    config: dict[str, Any]
+
+
+class AgentStatusIn(BaseModel):
+    status: Literal["active", "disabled", "archived"]
+
+
+class AgentWriteIn(BaseModel):
+    config: dict[str, Any] = Field(description="Full agent configuration; validated server-side (see AgentConfig).")
+    change_note: Optional[str] = Field(default=None, max_length=300)
+
+
+class ToolOut(BaseModel):
+    name: str
+    description: str
+    effect: Literal["read", "write", "destructive"]
+    connector: str
+    capabilities: list[str]
+    allowed_roles: list[str]
+    timeout_s: float
+    max_retries: int
+    idempotent: bool
+    input_schema: dict[str, Any]
+
+
+class ProviderStatusOut(BaseModel):
+    provider: str
+    available: bool
+    detail: str
+
+
+class PlanCreate(BaseModel):
+    objective: str = Field(min_length=3, max_length=1000)
+    mode: Literal["auto", "deterministic", "llm", "structured"] = "auto"
+    plan: Optional[dict[str, Any]] = Field(default=None, description="Required when mode is 'structured'.")
+
+
+class PlanOut(BaseModel):
+    id: str
+    objective: str
+    status: Literal["draft", "invalid", "executed"]
+    planner: str
+    plan: dict[str, Any]
+    issues: list[ValidationIssue]
+    valid: bool
+    failure_category: Optional[str] = None
+    usage: Optional[UsageOut] = None
+    definition: Optional[WorkflowDefinition] = None
+    trigger_fields: list[dict[str, Any]] = Field(default_factory=list)
+    created_by: str
+    created_at: datetime
+    run_id: Optional[str] = None
+    note: Optional[str] = None
+
+
+class PlanExecuteIn(BaseModel):
+    inputs: dict[str, Any] = Field(default_factory=dict)
 
 
 class ConnectorOut(BaseModel):
@@ -340,6 +454,9 @@ class NodeTypeUsage(BaseModel):
 class UsageSummary(BaseModel):
     llm_backed: bool
     llm_calls: int
+    input_tokens: int = 0
+    output_tokens: int = 0
+    usage_source: str = "none"
     note: str
     total_node_runs: int
     by_node_type: list[NodeTypeUsage]

@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useMatch } from 'react-router-dom'
 import clsx from 'clsx'
 import {
-  Activity, Bot, GitBranch, LayoutDashboard, LogOut, Menu, Play, Plug, Settings, ShieldCheck, ScrollText, X,
+  Activity, Bot, GitBranch, LayoutDashboard, LogOut, Menu, Play, Plug, Route, Settings, ShieldCheck, ScrollText, X,
 } from 'lucide-react'
 import { useAuth } from '../auth/AuthContext'
 import { useOverview } from '../lib/queries'
@@ -12,6 +12,7 @@ interface Item { to: string; label: string; icon: typeof Bot; end?: boolean; per
 const GROUPS: { title: string; items: Item[] }[] = [
   { title: 'Build', items: [
     { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
+    { to: '/plan', label: 'Plan & run', icon: Route },
     { to: '/workflows', label: 'Workflows', icon: GitBranch },
   ] },
   { title: 'Operate', items: [

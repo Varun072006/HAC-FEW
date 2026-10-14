@@ -97,3 +97,33 @@ Events carry concise decision summaries and policy outcomes. Model reasoning is 
 Every login, authorization denial, run start/finish, policy decision, tool execution, approval request/decision and workflow change is
 appended to `audit_events`. Each row stores `sha256(prev_hash + canonical content)`; `GET /audit/verify` recomputes the chain.
 Appends are serialised in-process. A multi-process deployment must serialise them in the database (e.g. an advisory lock).
+
+## Agent runtime (added in v0.3)
+
+The machine-readable contract is the OpenAPI document; this is the map. All routes are under `/api/v1`.
+
+| Route | Permission | Purpose |
+|---|---|---|
+| `GET /agents`, `GET /agents/{id}`, `GET /agents/{id}/versions` | `registry:read` | The agent registry: hierarchy level, parent, tools, permissions, model, budgets, retry policy, status, version history |
+| `POST /agents`, `PUT /agents/{id}` | `agent:write` (admin) | Create / edit. Every write is validated server-side and stored as a new immutable version. `422 {detail:{message, issues:[{code, message, field}]}}` lists every problem |
+| `POST /agents/{id}/status` `{status}` | `agent:write` | `active` / `disabled` / `archived`. Refused while active children exist; an archived agent cannot be reactivated |
+| `GET /tools` | `registry:read` | The tool registry: effect class (`read`/`write`/`destructive`), connector, roles, timeout, retries, JSON input schema |
+| `GET /gateway/providers` | `registry:read` | Whether each model provider is reachable/configured. Never returns keys |
+| `POST /plans` `{objective, mode, plan?}` | `workflow:run` | `mode`: `auto` (supervisor's model if configured, else deterministic), `deterministic`, `llm`, `structured` (you supply the plan). Returns the plan, every validation issue with its `category` (`planning_failure` / `policy_rejection` / `budget_exceeded`), the compiled workflow definition and the run-input fields. Persisted whether valid or not |
+| `GET /plans/{id}` | `run:read` | Re-read a plan |
+| `POST /plans/{id}/execute` `{inputs}` | `workflow:run` | Re-validates against the live registry and the caller's role, saves the compiled workflow, creates the run, returns `202`. `422` carries the issues if anything changed since planning |
+| `POST /runs/{id}/cancel` | owner or `run:cancel_any` | `202`; `409` if already finished |
+| `GET /runs/{id}/stream?after=N` | `run:read` | Server-Sent Events over the persisted event log (`event: run_event`, `id: <seq>`, final `event: end`). Resume with `after=` or `Last-Event-ID`. The fetch-based console client sends the bearer token; browsers' `EventSource` cannot, so there is also the polling feed below |
+| `GET /runs/{id}/events?after=N` | `run:read` | Cursor-based polling feed (unchanged) |
+
+Run and node statuses gained `partial` (run) and `cancelled`; approvals gained `cancelled`. `RunDetail` now carries `objective`, `plan_id`,
+`budget`, `usage` (model tokens with `source = provider | estimated | mixed | none`; `cost_usd` is always null), `tool_calls_used` and, per
+node, `delegation`, `agent_version`, `failure_class`, `usage`, `operations`, `evidence` and `criticality`.
+
+### Event types (additions)
+
+`plan.started`, `plan.completed`, `task.assigned`, `agent.delegated`, `model.call`, `tool.rejected` (arguments failed validation),
+`tool.replayed` (a recorded result was reused instead of calling the tool), `node.retry` (with `delay_s`), `node.cancelled`,
+`approval.cancelled`, `run.cancel_requested`, `run.cancelled`, `run.partial`. The earlier types are unchanged:
+`run.created` (= workflow queued), `run.started/resumed`, `node.started/resumed/completed/failed/skipped/rejected`, `policy.decision`,
+`tool.call`, `tool.result`, `approval.requested/decided`, `node.awaiting_approval`, `run.awaiting_approval/completed/failed/rejected`.

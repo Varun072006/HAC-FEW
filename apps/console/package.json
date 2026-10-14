@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "gen:api": "node scripts/gen-api.mjs",
-    "e2e": "node e2e/journey.mjs"
+    "e2e": "node e2e/journey.mjs",
+    "e2e:agent": "node e2e/agent_journey.mjs"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",

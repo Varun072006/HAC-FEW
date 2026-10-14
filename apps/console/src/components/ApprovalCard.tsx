@@ -51,8 +51,18 @@ export function ApprovalCard({ a, compact }: { a: Approval; compact?: boolean })
       <div className="mt-3 grid gap-4 md:grid-cols-2">
         <div>
           <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-2">What will be executed</div>
-          <KV items={[['Tool', <Mono key="t">{a.tool_name}</Mono>], ...params.map(([k, v]) => [k, formatValue(v)] as [string, string])]} />
+          <KV items={[['Tool', <Mono key="t">{a.tool_name}</Mono>], ['Proposed by agent', <Mono key="a">{a.agent}</Mono>], ...params.map(([k, v]) => [k, formatValue(v)] as [string, string])]} />
           {typeof a.params['description'] === 'string' && <p className="mt-2 text-sm text-ink-2">“{String(a.params['description'])}”</p>}
+          {(a.evidence?.length ?? 0) > 0 && (
+            <div className="mt-3">
+              <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-2">Evidence gathered before this step</div>
+              <ul className="space-y-1 text-xs">
+                {(a.evidence as { from?: string; evidence?: unknown[] }[]).map((e, i) => (
+                  <li key={i}><Mono>{e.from}</Mono>: {(e.evidence ?? []).slice(0, 4).map((x) => String(x)).join(' · ')}{(e.evidence?.length ?? 0) > 4 ? ' …' : ''}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
         <div>
           <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-ink-2">Required approvals</div>

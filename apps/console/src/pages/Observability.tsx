@@ -19,11 +19,12 @@ function Execution() {
   return (
     <div className="space-y-5">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {[['Step runs', u.total_node_runs], ['Tool calls', u.tool_calls], ['Tool failures', u.tool_failures], ['Model calls', u.llm_calls]].map(([l, v]) => (
+        {[['Step runs', u.total_node_runs], ['Tool calls', u.tool_calls], ['Tool failures', u.tool_failures], ['Model calls', u.llm_calls], ...(u.llm_backed ? [['Input tokens', u.input_tokens ?? 0], ['Output tokens', u.output_tokens ?? 0]] : [])].map(([l, v]) => (
           <div key={String(l)} className="rounded-md border border-line bg-surface p-4"><div className="text-xs font-semibold uppercase tracking-wide text-ink-2">{l}</div><div className="tnum mt-1 text-2xl font-semibold">{v}</div></div>
         ))}
       </div>
-      {!u.llm_backed && <Banner tone="info"><span className="font-medium">No model usage to report.</span> {u.note}</Banner>}
+      {!u.llm_backed ? <Banner tone="info"><span className="font-medium">No model usage to report.</span> {u.note}</Banner>
+        : <Banner tone="info"><span className="font-medium">Token source: {u.usage_source}.</span> {u.note}</Banner>}
       {u.by_node_type.length === 0 ? <EmptyState title="No executions recorded yet">Run a workflow to see latency and failure rates per step type.</EmptyState> : (
         <Table caption="Execution statistics by step type" head={['Step type', 'Runs', 'Failures', 'Avg latency', 'Max latency']}>
           {u.by_node_type.map((n) => (

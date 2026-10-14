@@ -17,13 +17,6 @@ from core.platform.security import ROLE_PERMISSIONS, ROLES, require
 
 router = APIRouter(tags=["Registry & observability"])
 
-AGENTS = [
-    ("supervisor", "Supervisor", "Coordinates the workflow graph, enforces policy gates, and parks high-risk steps for approval.", None),
-    ("hr", "HR agent", "Owns employee records in the HRMS.", "supervisor"),
-    ("finance", "Finance agent", "Owns expenses and payroll in the ERP.", "supervisor"),
-    ("it", "IT agent", "Owns tickets and stakeholder notifications.", "supervisor"),
-]
-
 CONNECTORS = [
     ("hrms", "HRMS", "Employee records", ["hr.create_employee"], ["hrms_create_employee", "hrms_get_employee"]),
     ("erp", "ERP (Finance)", "Expenses and payroll", ["finance.submit_expense", "finance.setup_payroll"],
@@ -37,22 +30,6 @@ def _usage_by_type(db: Session) -> dict[str, tuple[int, int]]:
     failed = func.sum(case((NodeRun.status == "failed", 1), else_=0))
     rows = db.query(NodeRun.node_type, func.count(NodeRun.id), failed)        .filter(NodeRun.attempts > 0).group_by(NodeRun.node_type).all()
     return {t: (int(c), int(f or 0)) for t, c, f in rows}
-
-
-@router.get("/agents", response_model=list[s.AgentOut])
-def agents(db: Session = Depends(get_session), _: User = Depends(require("registry:read"))):
-    failed = func.sum(case((NodeRun.status == "failed", 1), else_=0))
-    per_agent = {a: (int(c), int(f or 0)) for a, c, f in
-                 db.query(NodeRun.agent, func.count(NodeRun.id), failed)
-                 .filter(NodeRun.attempts > 0, NodeRun.agent.isnot(None)).group_by(NodeRun.agent).all()}
-    out = []
-    for aid, name, role, parent in AGENTS:
-        types = sorted({t for t, n in CATALOG.items() if n.agent == aid or (n.kind == "rag" and aid != "supervisor")})             if aid != "supervisor" else []
-        runs, fails = per_agent.get(aid, (0, 0))
-        out.append(s.AgentOut(id=aid, name=name, role=role, parent=parent,
-                              tools=AGENT_TOOL_PERMISSIONS.get(aid, []), node_types=types,
-                              node_runs=runs, failures=fails))
-    return out
 
 
 @router.get("/connectors", response_model=list[s.ConnectorOut])
@@ -109,6 +86,7 @@ def audit_verify(db: Session = Depends(get_session), _: User = Depends(require("
 
 @router.get("/usage", response_model=s.UsageSummary)
 def usage(db: Session = Depends(get_session), _: User = Depends(require("run:read_all"))):
+    from core.platform.gateway import Usage
     rows = db.query(NodeRun.node_type, func.count(NodeRun.id), func.avg(NodeRun.latency_ms), func.max(NodeRun.latency_ms))\
         .filter(NodeRun.attempts > 0).group_by(NodeRun.node_type).all()
     by_type = _usage_by_type(db)
@@ -120,10 +98,17 @@ def usage(db: Session = Depends(get_session), _: User = Depends(require("run:rea
         for c in calls or []:
             tool_calls += 1
             tool_failures += 0 if c.get("success") else 1
+    total = Usage()
+    for (u,) in db.query(NodeRun.usage).filter(NodeRun.usage.isnot(None)).all():
+        total.add(Usage.from_dict(u))
+    backed = total.calls > 0
     return s.UsageSummary(
-        llm_backed=False, llm_calls=0,
-        note="The execution engine is rule-based. No language-model calls are made, so there is no token or "
-             "model-cost data to report. This page will show it once a model-backed node exists.",
+        llm_backed=backed, llm_calls=total.calls, input_tokens=total.input_tokens, output_tokens=total.output_tokens,
+        usage_source=total.source,
+        note=("Token counts are summed from model calls recorded on task runs. 'provider' means the model server "
+              "reported them; 'estimated' means they were derived from text length; no cost is computed."
+              if backed else "No model-backed task has run yet, so there is no token usage to report. Scripted tasks "
+                             "and tools make no model calls."),
         total_node_runs=sum(i.runs for i in items), by_node_type=items,
         tool_calls=tool_calls, tool_failures=tool_failures)
 

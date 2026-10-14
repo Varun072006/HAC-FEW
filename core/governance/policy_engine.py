@@ -19,7 +19,7 @@ from mock_systems.models import AuditLog
 # --- Shared governance constants (read by the platform API so the UI never drifts from the engine) ---
 AGENT_TOOL_PERMISSIONS = {
     "hr": ["hrms_create_employee", "hrms_get_employee", "rag_retrieve_policy"],
-    "finance": ["erp_submit_expense", "erp_get_expense", "erp_setup_payroll", "rag_retrieve_policy"],
+    "finance": ["erp_submit_expense", "erp_get_expense", "erp_setup_payroll", "rag_retrieve_policy", "reconcile_results"],
     "it": ["ticketing_create_ticket", "ticketing_get_ticket", "notifications_send_email", "rag_retrieve_policy"],
 }
 EXPENSE_AUTO_APPROVE_BELOW = 100.0
@@ -42,6 +42,8 @@ RULES_CATALOG = [
      "description": "Stakeholder notification dispatch."},
     {"rule_id": "RULE-STD-WRITE-001", "tool": "hrms_create_employee, ticketing_create_ticket", "risk": "medium",
      "outcome": "allowed", "description": "Reversible operational write, logged."},
+    {"rule_id": "RULE-DESTRUCTIVE-001", "tool": "destructive-class tools", "risk": "high", "outcome": "approval_required",
+     "description": "Any operation the tool registry classes as destructive always needs a Director or Admin approval."},
     {"rule_id": "RULE-READ-001", "tool": "read-only tools", "risk": "low", "outcome": "allowed",
      "description": "Read-only query."},
 ]
@@ -50,6 +52,7 @@ RULES_CATALOG = [
 APPROVAL_SLOTS = {
     "RULE-FIN-TIER-2": [["manager", "director", "admin"]],
     "RULE-FIN-TIER-3": [["director"], ["controller"]],
+    "RULE-DESTRUCTIVE-001": [["director", "admin"]],
 }
 
 
@@ -70,12 +73,16 @@ class GovernancePolicyEngine:
         agent: str,
         tool_name: str,
         tool_parameters: Dict[str, Any],
-        user_role: str = "employee"
+        user_role: str = "employee",
+        allowed_tools: Optional[list] = None,
     ) -> GovernanceDecision:
+        """`allowed_tools` lets the agent registry (the authority for configurable agents) supply the
+        allow-list; without it the static three-department table is used (legacy callers)."""
         agent = agent.lower()
 
         # 1. RBAC Allow-List Validation
-        allowed_tools = AGENT_TOOL_PERMISSIONS.get(agent, [])
+        if allowed_tools is None:
+            allowed_tools = AGENT_TOOL_PERMISSIONS.get(agent, [])
         if tool_name not in allowed_tools:
             GovernancePolicyEngine.log_audit_event(
                 actor_agent=agent,

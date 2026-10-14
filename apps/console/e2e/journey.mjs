@@ -100,7 +100,7 @@ log('manager sees status:', await mgr.page.getByRole('status').first().innerText
 const adm = await session()
 await login(adm.page, 'admin')
 for (const [path, name, wait] of [
-  ['/', '14-overview', 'Recent runs'], ['/runs', '15-runs', 'Runs'], ['/agents', '16-agents', 'Choose an agent'],
+  ['/', '14-overview', 'Recent runs'], ['/runs', '15-runs', 'Runs'], ['/agents', '16-agents', 'All agents'],
   ['/connectors', '17-connectors', 'Healthy'], ['/policies', '18-policies', 'Decision rules'],
   ['/observability', '19-observability', 'Step runs'], ['/settings', '20-settings', 'Accounts'],
 ]) {

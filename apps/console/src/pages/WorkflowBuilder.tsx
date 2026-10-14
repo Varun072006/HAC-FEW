@@ -8,7 +8,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, ChevronDown, ChevronUp, Play, P
 import clsx from 'clsx'
 import type { CatalogNode, ValidationIssue, WorkflowDefinition } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { AgentGlyph } from '../components/Glyphs'
+import { AgentGlyph, glyphKind } from '../components/Glyphs'
 import { nodeTypes, type HacNode } from '../components/FlowNode'
 import { NodeInspector } from '../components/Inspector'
 import { RunDialog } from '../components/RunDialog'
@@ -18,8 +18,8 @@ import { availableReferences, uniqueNodeId } from '../lib/references'
 
 interface Initial { id?: string; version?: number; name: string; description: string; definition: WorkflowDefinition; templateId?: string | null }
 
-const CATEGORY_ORDER = ['trigger', 'knowledge', 'hr', 'finance', 'it', 'notify']
-const CATEGORY_LABEL: Record<string, string> = { trigger: 'Start', knowledge: 'Knowledge', hr: 'HR', finance: 'Finance', it: 'IT', notify: 'Notify' }
+const CATEGORY_ORDER = ['trigger', 'knowledge', 'hr', 'finance', 'it', 'notify', 'agent']
+const CATEGORY_LABEL: Record<string, string> = { trigger: 'Start', knowledge: 'Knowledge', hr: 'HR', finance: 'Finance', it: 'IT', notify: 'Notify', agent: 'Agents' }
 const DRAG_TYPE = 'application/x-hacfew-node'
 
 const blank = (): WorkflowDefinition => ({
@@ -118,7 +118,7 @@ function Builder({ initial, catalog }: { initial: Initial; catalog: CatalogNode[
 
   const display = useMemo<HacNode[]>(() => nodes.map((n) => {
     const s = spec.get(n.data.nodeType)
-    return { ...n, data: { ...n.data, agent: s?.agent, risk: s?.default_risk, issues: byNode.get(n.id)?.length ?? 0 } }
+    return { ...n, data: { ...n.data, agent: s?.kind === 'agent' ? ((n.data.params as { agent_id?: string } | undefined)?.agent_id ?? null) : s?.agent, risk: s?.default_risk, issues: byNode.get(n.id)?.length ?? 0 } }
   }), [nodes, spec, byNode])
 
   const onNodesChange = useCallback((c: NodeChange<HacNode>[]) => canWrite || c.every((x) => x.type === 'select' || x.type === 'dimensions')
@@ -222,7 +222,7 @@ function Builder({ initial, catalog }: { initial: Initial; catalog: CatalogNode[
                       onClick={() => addNode(n.type)}
                       aria-label={`Add step: ${n.label}`}
                       className="flex w-full items-start gap-2 rounded-md border border-line bg-surface p-2 text-left transition-colors hover:border-navy hover:bg-navy-tint disabled:opacity-60">
-                      <AgentGlyph kind={n.agent} size={15} className="mt-0.5 text-navy" />
+                      <AgentGlyph kind={glyphKind(n.agent, n.kind === 'agent' ? 2 : undefined)} size={15} className="mt-0.5 text-navy" />
                       <span className="min-w-0 flex-1"><span className="block text-[13px] font-medium text-ink">{n.label}</span>
                         <span className="line-clamp-2 text-xs text-ink-2">{n.description}</span></span>
                       {canWrite && <Plus size={14} className="mt-0.5 shrink-0 text-ink-2" aria-hidden />}

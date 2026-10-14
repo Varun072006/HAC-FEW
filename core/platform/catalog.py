@@ -13,7 +13,7 @@ PRIVILEGED = ["manager", "director", "controller", "hr_rep", "admin"]
 class Param:
     name: str
     label: str
-    type: str = "string"            # string | text | number | boolean | select | fields
+    type: str = "string"            # string | text | number | boolean | select | fields | json
     required: bool = True
     default: object = None
     help: str = ""
@@ -24,8 +24,8 @@ class Param:
 class NodeSpecDef:
     type: str
     label: str
-    category: str                   # trigger | knowledge | hr | finance | it | notify
-    kind: str                       # trigger | rag | tool
+    category: str                   # trigger | knowledge | hr | finance | it | notify | agent
+    kind: str                       # trigger | rag | tool | agent
     description: str
     agent: Optional[str]            # department agent responsible (None for the trigger)
     tool: Optional[str]             # key into TOOL_REGISTRY for kind == "tool"
@@ -101,6 +101,34 @@ CATALOG: dict[str, NodeSpecDef] = {n.type: n for n in [
             Param("description", "Description", "text"),
         ),
         outputs=("id", "title", "category", "priority", "severity", "assigned_to", "status"),
+        side_effect=True, default_risk="medium",
+    ),
+    NodeSpecDef(
+        type="agent.task", label="Agent task", category="agent", kind="agent",
+        description="Delegates a task to a configured agent. The agent may only use the tools in its registry "
+                    "entry, and every tool call still passes validation, policy and approval.",
+        agent=None, tool=None,
+        params=(
+            Param("agent_id", "Agent", "string", help="Id of an active specialist or coordinator in the agent registry."),
+            Param("objective", "Objective", "text", help="What this task must accomplish. Supports {{...}} references."),
+            Param("operations", "Operations", "json", required=False, default=[],
+                  help='Scripted tool calls: [{"tool": "...", "arguments": {...}}]. Leave empty to let a '
+                       "model-backed agent decide, within its allowed tools."),
+            Param("inputs", "Context inputs", "json", required=False, default={},
+                  help='Named upstream values shared with a model-backed agent, e.g. {"policy": "{{nodes.policy.output.result.context}}"}.'),
+            Param("criticality", "Criticality", "select", default="required", options=("required", "optional"),
+                  help="An optional task may fail without failing the run; its dependents are skipped."),
+            Param("complexity", "Complexity", "select", default="medium", options=("low", "medium", "high"),
+                  help="Selects the agent's small, default or large model tier."),
+            Param("require_evidence", "Require evidence", "boolean", required=False, default=False,
+                  help="Fail with 'insufficient evidence' unless a tool returned citations or record ids."),
+            Param("required_capabilities", "Required capabilities", "json", required=False, default=[]),
+            Param("completion_criteria", "Completion criteria", "json", required=False, default=[]),
+            Param("expected_output", "Expected output keys", "json", required=False, default=[],
+                  help="Top-level keys the task output must contain (e.g. [\"result\"])."),
+            Param("timeout_s", "Timeout (s)", "number", required=False, default=None),
+        ),
+        outputs=("result", "results", "summary"),
         side_effect=True, default_risk="medium",
     ),
     NodeSpecDef(

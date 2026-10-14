@@ -55,3 +55,8 @@ def jwt_secret() -> str:
     value = secrets.token_urlsafe(48)
     path.write_text(value, encoding="utf-8")
     return value
+
+
+def node_workers() -> int:
+    """Size of the pool that executes task-graph nodes (per process)."""
+    return max(1, int(os.getenv("HACFEW_NODE_WORKERS", "8")))

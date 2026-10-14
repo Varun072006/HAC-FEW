@@ -12,7 +12,7 @@ from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from apps.api.routers import auth, registry, runs, workflows
+from apps.api.routers import agents, auth, plans, registry, runs, workflows
 from core.platform import config
 from core.platform.db import init_platform_db, session_factory
 from core.platform import engine as run_engine
@@ -31,6 +31,10 @@ async def lifespan(_: FastAPI):
     init_db()  # tables only; never reseeds or deletes existing mock data
     db = session_factory()()
     try:
+        from core.platform import agent_registry
+        seeded = agent_registry.seed_builtin_agents(db)
+        if seeded:
+            log.info("Seeded %d built-in agent definition(s).", seeded)
         created = seed_dev_users(db)
         if created:
             log.warning("Development accounts created (%d). Password: HACFEW_DEV_PASSWORD (default 'hacfew-dev'). "
@@ -59,7 +63,7 @@ app.add_middleware(
 )
 
 v1 = APIRouter(prefix="/api/v1")
-for r in (auth.router, workflows.router, runs.router, registry.router):
+for r in (auth.router, workflows.router, runs.router, registry.router, agents.router, plans.router):
     v1.include_router(r)
 app.include_router(v1)
 

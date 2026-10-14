@@ -64,10 +64,20 @@ def trigger_fields(definition: dict) -> list[dict]:
     return []
 
 
-def validate_definition(definition: dict, user_role: Optional[str] = None) -> list[dict]:
+def _load_agents(db) -> dict:
+    from core.platform import agent_registry
+    return {a["id"]: a for a in agent_registry.list_agents(db, include_archived=True)}
+
+
+def validate_definition(definition: dict, user_role: Optional[str] = None, agents: Optional[dict] = None,
+                        db=None) -> list[dict]:
+    """`db` is the caller's session (needed only when the workflow has agent tasks). Never opens its own:
+    a nested session inside an open transaction would deadlock SQLite."""
     issues: list[dict] = []
     nodes = definition.get("nodes") or []
     edges = definition.get("edges") or []
+    if agents is None and any(n.get("type") == "agent.task" for n in nodes):
+        agents = _load_agents(db) if db is not None else {}
 
     if not nodes:
         return [_issue("error", "EMPTY", "The workflow has no nodes.")]
@@ -108,6 +118,10 @@ def validate_definition(definition: dict, user_role: Optional[str] = None) -> li
             if empty:
                 continue
             is_ref = isinstance(raw, str) and bool(REF.search(raw))
+            if p.type == "json":
+                if not isinstance(raw, (list, dict)):
+                    issues.append(_issue("error", "BAD_PARAM_TYPE", f"'{p.label}' must be a JSON list or object.", n["id"]))
+                continue
             if p.type == "number" and not is_ref:
                 try:
                     float(raw)
@@ -131,6 +145,10 @@ def validate_definition(definition: dict, user_role: Optional[str] = None) -> li
             else:
                 issues.append(_issue("error", "BAD_REFERENCE",
                                      f"'{{{{{ref}}}}}' is not valid. Use trigger.<field> or nodes.<id>.output.<field>.", n["id"]))
+        if spec.kind == "agent":
+            from core.platform.planner import check_agent_task
+            issues.extend(check_agent_task(params, agents or {}, user_role, n["id"]))
+            continue
         if user_role and user_role not in spec.allowed_roles:
             issues.append(_issue("error", "ROLE_NOT_ALLOWED",
                                  f"Role '{user_role}' may not run '{spec.label}'.", n["id"]))
@@ -163,6 +181,10 @@ def validate_definition(definition: dict, user_role: Optional[str] = None) -> li
         for n in nodes:
             if n.get("id") not in reachable:
                 issues.append(_issue("error", "UNREACHABLE", "This node is not connected to the trigger.", n.get("id")))
+
+    if agents and not has_errors(issues):
+        from core.platform.planner import check_review_requirements
+        issues.extend(check_review_requirements([n for n in nodes if n.get("id")], edges, agents))
 
     if len(nodes) == 1 and len(triggers) == 1:
         issues.append(_issue("warning", "NO_ACTIONS", "The workflow has a trigger but no action nodes."))

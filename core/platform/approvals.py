@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from core.platform import audit
-from core.platform.engine import emit
+from core.platform.events import emit
 from core.platform.models import Approval, ApprovalDecision, User, utcnow
 from core.platform.security import permissions_for
 

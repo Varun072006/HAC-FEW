@@ -11,6 +11,7 @@ import Login from './pages/Login'
 import Overview from './pages/Overview'
 import Workflows from './pages/Workflows'
 import WorkflowBuilder from './pages/WorkflowBuilder'
+import PlanPage from './pages/Plan'
 import Runs from './pages/Runs'
 import RunDetail from './pages/RunDetail'
 import Approvals from './pages/Approvals'
@@ -50,6 +51,7 @@ const router = createBrowserRouter([
       { path: '/', element: <Overview /> },
       { path: '/workflows', element: <Workflows /> },
       { path: '/workflows/:id', element: <WorkflowBuilder /> },
+      { path: '/plan', element: <PlanPage /> },
       { path: '/runs', element: <Runs /> },
       { path: '/runs/:id', element: <RunDetail /> },
       { path: '/approvals', element: <Approvals /> },

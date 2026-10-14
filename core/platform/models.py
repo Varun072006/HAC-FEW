@@ -42,13 +42,19 @@ class Run(Base):
     workflow_version = Column(Integer, nullable=False)
     definition_snapshot = Column(JSON, nullable=False)
     inputs = Column(JSON, nullable=False)
-    status = Column(String(30), nullable=False)  # queued|running|awaiting_approval|completed|failed|rejected
+    status = Column(String(30), nullable=False)  # queued|running|awaiting_approval|completed|partial|failed|rejected|cancelled
     started_by = Column(String(40), ForeignKey("users.id"), nullable=False)
     started_by_role = Column(String(40), nullable=False)
     created_at = Column(DateTime, default=utcnow, nullable=False)
     finished_at = Column(DateTime, nullable=True)
     error = Column(Text, nullable=True)
     next_seq = Column(Integer, default=1, nullable=False)
+    # --- agent runtime (migration 0002) ---
+    objective = Column(Text, nullable=True)
+    plan_id = Column(String(40), nullable=True)
+    budget = Column(JSON, nullable=True)           # workflow-level resource limits chosen at run creation
+    agent_snapshot = Column(JSON, nullable=True)   # configs of every agent the run may use (version-pinned)
+    cancel_requested = Column(Boolean, default=False, nullable=False)
     __table_args__ = (Index("ix_runs_status", "status"), Index("ix_runs_started_by", "started_by"))
 
 
@@ -59,8 +65,8 @@ class NodeRun(Base):
     node_id = Column(String(60), nullable=False)
     node_type = Column(String(60), nullable=False)
     label = Column(String(160), nullable=True)
-    agent = Column(String(30), nullable=True)
-    # pending|running|awaiting_approval|completed|failed|skipped|rejected
+    agent = Column(String(60), nullable=True)
+    # pending|running|awaiting_approval|completed|failed|skipped|rejected|cancelled
     status = Column(String(30), nullable=False, default="pending")
     attempts = Column(Integer, default=0, nullable=False)
     input = Column(JSON, nullable=True)
@@ -72,6 +78,12 @@ class NodeRun(Base):
     started_at = Column(DateTime, nullable=True)
     finished_at = Column(DateTime, nullable=True)
     latency_ms = Column(Integer, nullable=True)
+    # --- agent runtime (migration 0002) ---
+    agent_version = Column(Integer, nullable=True)
+    delegation = Column(JSON, nullable=True)       # ["supervisor", "finance", "expense_specialist"]
+    usage = Column(JSON, nullable=True)            # model/tool usage for this task, with provenance
+    checkpoint = Column(JSON, nullable=True)       # resumable agent state (completed ops, pending op)
+    failure_class = Column(String(30), nullable=True)
     __table_args__ = (UniqueConstraint("run_id", "node_id", name="uq_node_run"),)
 
 
@@ -92,18 +104,20 @@ class Approval(Base):
     id = Column(String(40), primary_key=True)
     run_id = Column(String(40), ForeignKey("runs.id"), nullable=False)
     node_id = Column(String(60), nullable=False)
-    status = Column(String(20), nullable=False, default="pending")  # pending|approved|rejected
+    status = Column(String(20), nullable=False, default="pending")  # pending|approved|rejected|cancelled
     risk_level = Column(String(10), nullable=False)
     rule_id = Column(String(60), nullable=True)
     reason = Column(Text, nullable=False)
     tool_name = Column(String(80), nullable=False)
-    agent = Column(String(30), nullable=False)
+    agent = Column(String(60), nullable=False)
     params_snapshot = Column(JSON, nullable=False)  # immutable: exactly what will execute
     required_slots = Column(JSON, nullable=False)   # list of lists of eligible roles
     requested_by = Column(String(40), ForeignKey("users.id"), nullable=False)
     requested_at = Column(DateTime, default=utcnow, nullable=False)
     decided_at = Column(DateTime, nullable=True)
-    __table_args__ = (UniqueConstraint("run_id", "node_id", name="uq_approval_node"),
+    op_index = Column(Integer, default=0, nullable=False)   # which operation of the task is protected
+    evidence = Column(JSON, nullable=True)                  # what the task had established when it paused
+    __table_args__ = (UniqueConstraint("run_id", "node_id", "op_index", name="uq_approval_node_op"),
                       Index("ix_approvals_status", "status"))
 
 
@@ -138,3 +152,65 @@ class AuditEvent(Base):
     prev_hash = Column(String(64), nullable=False)
     hash = Column(String(64), nullable=False)
     __table_args__ = (Index("ix_audit_run", "run_id"), Index("ix_audit_action", "action"))
+
+
+class Agent(Base):
+    """Lifecycle record of an agent. Configuration lives in AgentVersion; execution state lives in NodeRun."""
+    __tablename__ = "agents"
+    id = Column(String(60), primary_key=True)
+    status = Column(String(20), nullable=False, default="active")  # active|disabled|archived
+    current_version = Column(Integer, nullable=False, default=1)
+    created_by = Column(String(40), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class AgentVersion(Base):
+    """Immutable, validated configuration of one agent version."""
+    __tablename__ = "agent_versions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    agent_id = Column(String(60), ForeignKey("agents.id"), nullable=False)
+    version = Column(Integer, nullable=False)
+    level = Column(Integer, nullable=False)
+    parent_id = Column(String(60), nullable=True)
+    config = Column(JSON, nullable=False)
+    change_note = Column(Text, nullable=True)
+    created_by = Column(String(40), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    __table_args__ = (UniqueConstraint("agent_id", "version", name="uq_agent_version"),
+                      Index("ix_agent_versions_parent", "parent_id"))
+
+
+class Plan(Base):
+    __tablename__ = "plans"
+    id = Column(String(40), primary_key=True)
+    objective = Column(Text, nullable=False)
+    status = Column(String(20), nullable=False, default="draft")  # draft|executed|invalid
+    planner = Column(String(30), nullable=False)                  # deterministic|llm|structured
+    plan = Column(JSON, nullable=False)
+    issues = Column(JSON, nullable=False, default=list)
+    usage = Column(JSON, nullable=True)
+    created_by = Column(String(40), ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    run_id = Column(String(40), nullable=True)
+
+
+class ToolExecution(Base):
+    """One bounded tool operation. The unique idempotency key is what stops a side effect running twice."""
+    __tablename__ = "tool_executions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    idempotency_key = Column(String(64), nullable=False)
+    run_id = Column(String(40), ForeignKey("runs.id"), nullable=False)
+    node_id = Column(String(60), nullable=False)
+    op_index = Column(Integer, nullable=False)
+    tool = Column(String(80), nullable=False)
+    effect = Column(String(12), nullable=False)       # read|write|destructive
+    status = Column(String(12), nullable=False)       # started|succeeded|failed
+    args = Column(JSON, nullable=True)
+    result = Column(JSON, nullable=True)
+    error = Column(Text, nullable=True)
+    started_at = Column(DateTime, default=utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    latency_ms = Column(Integer, nullable=True)
+    __table_args__ = (UniqueConstraint("idempotency_key", name="uq_tool_idem"),
+                      Index("ix_tool_exec_run", "run_id"))

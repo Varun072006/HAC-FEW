@@ -9,6 +9,8 @@ COPY apps/api/ apps/api/
 COPY core/ core/
 COPY mock_systems/ mock_systems/
 COPY data/ data/
+COPY alembic.ini .
+COPY migrations/ migrations/
 
 EXPOSE 8000
 

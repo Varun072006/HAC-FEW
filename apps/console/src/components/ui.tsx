@@ -2,7 +2,7 @@ import { forwardRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type R
 import * as Dialog from '@radix-ui/react-dialog'
 import clsx from 'clsx'
 import {
-  AlertTriangle, Ban, CheckCircle2, Circle, Clock, Loader2, MinusCircle, ShieldAlert, ShieldCheck, X, XCircle,
+  AlertTriangle, Ban, CheckCircle2, CircleDashed, Circle, Clock, Loader2, MinusCircle, ShieldAlert, ShieldCheck, X, XCircle,
 } from 'lucide-react'
 
 /* ---------------------------------------------------------------- buttons */
@@ -48,7 +48,7 @@ export function IconButton({ label, children, className, ...rest }: ButtonHTMLAt
 }
 
 /* ---------------------------------------------------------------- status vocabulary */
-type StatusKey = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'failed' | 'rejected' | 'skipped' | 'pending' | 'approved'
+type StatusKey = 'queued' | 'running' | 'awaiting_approval' | 'completed' | 'partial' | 'failed' | 'rejected' | 'skipped' | 'pending' | 'approved' | 'cancelled'
 const STATUS: Record<StatusKey, { label: string; cls: string; icon: ReactNode }> = {
   queued: { label: 'Queued', cls: 'text-ink-2 bg-muted-tint', icon: <Clock size={13} /> },
   pending: { label: 'Pending', cls: 'text-ink-2 bg-muted-tint', icon: <Circle size={13} /> },
@@ -59,6 +59,8 @@ const STATUS: Record<StatusKey, { label: string; cls: string; icon: ReactNode }>
   failed: { label: 'Failed', cls: 'text-bad-ink bg-bad-tint', icon: <XCircle size={13} /> },
   rejected: { label: 'Rejected', cls: 'text-bad-ink bg-bad-tint', icon: <Ban size={13} /> },
   skipped: { label: 'Skipped', cls: 'text-ink-2 bg-muted-tint', icon: <MinusCircle size={13} /> },
+  partial: { label: 'Partial', cls: 'text-warn bg-warn-tint', icon: <AlertTriangle size={13} /> },
+  cancelled: { label: 'Cancelled', cls: 'text-ink-2 bg-muted-tint', icon: <CircleDashed size={13} /> },
 }
 
 export function statusMeta(s: string) { return STATUS[s as StatusKey] ?? STATUS.pending }
@@ -88,10 +90,11 @@ export function RiskBadge({ risk }: { risk: string }) {
   )
 }
 
-export function Chip({ children, tone = 'neutral', mono }: { children: ReactNode; tone?: 'neutral' | 'navy' | 'warn'; mono?: boolean }) {
+export function Chip({ children, tone = 'neutral', mono }: { children: ReactNode; tone?: 'neutral' | 'navy' | 'warn' | 'ok' | 'bad'; mono?: boolean }) {
   return (
     <span className={clsx('inline-flex items-center rounded-sm px-1.5 py-0.5 text-xs',
-      tone === 'navy' ? 'bg-navy-tint text-navy' : tone === 'warn' ? 'bg-warn-tint text-warn' : 'bg-muted-tint text-ink-2',
+      tone === 'navy' ? 'bg-navy-tint text-navy' : tone === 'warn' ? 'bg-warn-tint text-warn'
+        : tone === 'ok' ? 'bg-ok-tint text-ok-ink' : tone === 'bad' ? 'bg-bad-tint text-bad-ink' : 'bg-muted-tint text-ink-2',
       mono && 'mono')}>
       {children}
     </span>

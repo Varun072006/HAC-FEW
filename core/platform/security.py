@@ -27,12 +27,13 @@ ROLES = ["employee", "manager", "director", "controller", "hr_rep", "it_admin", 
 _BASE = {"workflow:read", "workflow:run", "run:read", "registry:read", "policy:read", "connector:read"}
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "employee": set(_BASE),
-    "manager": _BASE | {"workflow:write", "run:read_all", "approval:decide"},
-    "director": _BASE | {"workflow:write", "run:read_all", "approval:decide"},
+    "manager": _BASE | {"workflow:write", "run:read_all", "approval:decide", "run:cancel_any"},
+    "director": _BASE | {"workflow:write", "run:read_all", "approval:decide", "run:cancel_any"},
     "controller": _BASE | {"run:read_all", "approval:decide", "pii:read", "audit:read"},
     "hr_rep": _BASE | {"workflow:write", "run:read_all", "pii:read"},
     "it_admin": _BASE | {"workflow:write", "run:read_all"},
-    "admin": _BASE | {"workflow:write", "run:read_all", "approval:decide", "pii:read", "audit:read", "org:admin"},
+    "admin": _BASE | {"workflow:write", "run:read_all", "approval:decide", "pii:read", "audit:read", "org:admin",
+              "agent:write", "run:cancel_any"},
 }
 
 

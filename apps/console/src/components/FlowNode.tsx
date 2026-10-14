@@ -2,7 +2,7 @@ import { memo } from 'react'
 import { Handle, Position, type NodeProps, type Node } from '@xyflow/react'
 import clsx from 'clsx'
 import { AlertTriangle } from 'lucide-react'
-import { AgentGlyph } from './Glyphs'
+import { AgentGlyph, glyphKind } from './Glyphs'
 import { RiskBadge, StatusBadge, statusMeta } from './ui'
 import { formatMs } from '../lib/format'
 
@@ -10,6 +10,7 @@ export interface HacNodeData extends Record<string, unknown> {
   nodeType: string
   label: string
   agent?: string | null
+  agentLevel?: number | null
   risk?: string
   issues?: number
   /** Present only in run views. */
@@ -26,6 +27,8 @@ const ring: Record<string, string> = {
   completed: 'border-ok',
   failed: 'border-bad',
   rejected: 'border-bad',
+  cancelled: 'border-line border-dashed',
+  partial: 'border-warn',
   skipped: 'border-line border-dashed',
   pending: 'border-line',
 }
@@ -45,7 +48,7 @@ function FlowNodeImpl({ data, selected }: NodeProps<HacNode>) {
     >
       {!isTrigger && <Handle type="target" position={Position.Left} aria-label="Input connector" />}
       <div className="flex items-center gap-2 border-b border-line/80 px-2.5 py-2">
-        <AgentGlyph kind={isTrigger ? 'trigger' : data.agent} size={16} className="text-navy" />
+        <AgentGlyph kind={isTrigger ? 'trigger' : glyphKind(data.agent, data.agentLevel ?? (data.nodeType === 'agent.task' ? 2 : undefined))} size={16} className="text-navy" />
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold text-ink">{data.label}</div>
           <div className="mono truncate text-[11px] text-ink-2">{data.nodeType}</div>

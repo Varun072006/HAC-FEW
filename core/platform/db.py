@@ -24,11 +24,17 @@ def _make_engine(url: str):
     if url.startswith("sqlite"):
         @event.listens_for(engine, "connect")
         def _pragmas(dbapi_conn, _):
+            dbapi_conn.isolation_level = None  # we emit BEGIN ourselves (below)
             cur = dbapi_conn.cursor()
             cur.execute("PRAGMA journal_mode=WAL")
             cur.execute("PRAGMA busy_timeout=30000")
             cur.execute("PRAGMA foreign_keys=ON")
             cur.close()
+
+        @event.listens_for(engine, "begin")
+        def _begin_immediate(conn):
+            # Writers queue on busy_timeout instead of failing when a read transaction upgrades to a write.
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
     return engine
 
 
@@ -49,8 +55,10 @@ def session_factory():
 
 
 def init_platform_db():
+    """Bring the schema to the latest migration (the only supported way to change tables)."""
     from core.platform import models  # noqa: F401  (register tables)
-    Base.metadata.create_all(bind=get_engine())
+    from core.platform import migrate
+    migrate.upgrade(get_engine())
 
 
 def get_session():

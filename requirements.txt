@@ -19,6 +19,7 @@ sqlalchemy>=2.0.35
 psycopg2-binary>=2.9.9
 pgvector>=0.3.2
 alembic>=1.13.2
+jsonschema>=4.20.0
 
 # Imported by the retriever, GraphRAG and the Streamlit console (were missing)
 scikit-learn>=1.4.0

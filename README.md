@@ -6,8 +6,8 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![LangGraph](https://img.shields.io/badge/Orchestration-LangGraph-blue)](https://github.com/langchain-ai/langgraph)
-[![Tests](https://img.shields.io/badge/Tests-20%2F20%20Passed-brightgreen)](file:///tests)
-[![Benchmark](https://img.shields.io/badge/Benchmark-100%25%20Success-success)](file:///eval)
+[![Tests](https://img.shields.io/badge/Tests-103%20passing-brightgreen)](tests)
+[![Evaluation](https://img.shields.io/badge/Agent%20eval-22%2F22%20scenarios-success)](eval/agent_eval_results.json)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A governed, observable multi-agent system where a central **Supervisor Agent** plans, decomposes, and coordinates domain-specialized enterprise agents (**HR**, **Finance**, **IT**) executing complex workflows with deterministic schema contracts, policy-grounded RAG, typed tool execution, and human-in-the-loop approvals.
@@ -45,11 +45,26 @@ Try it: open **Workflows → Expense reimbursement → Use template → Save →
 * The original Streamlit console still runs (`python -m streamlit run apps/web/app.py`). Its approval tab is a legacy,
   unauthenticated view and is labelled as such; the legacy `POST /workflows/run` endpoint is off unless `HACFEW_ENABLE_LEGACY_API=1`.
 
+## 🤖 Hierarchical agent runtime
+
+Configurable agents (supervisor → department coordinators → specialists → tools) execute a validated task graph on the same engine,
+approvals and audit trail. A user states an objective on **Plan & run**; the server turns it into a structured plan, rejects anything
+unauthorised or over budget *before* it runs, schedules independent tasks in parallel, parks protected operations for a human, and
+resumes from a persisted checkpoint. Everything you see in the console (delegation tree, tool activity, policy decisions, evidence,
+retries, token usage with its provenance) is read from the persisted event log, live over Server-Sent Events.
+
+* Design, rules, guarantees and **limitations**: [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md)
+* Endpoints and event types: [docs/API_CONTRACTS.md](docs/API_CONTRACTS.md)
+* Measured evaluation (every number from a real run, failures included): `python eval/agent_eval.py` → [eval/agent_eval_results.json](eval/agent_eval_results.json)
+* Live smoke test against a running API: `python scripts/smoke_agent_runtime.py http://127.0.0.1:8000`
+* Schema changes are Alembic migrations (`migrations/`), applied automatically at API start; databases from earlier builds are upgraded in place.
+
 **Known gaps** (deliberately not faked): no user-management UI or SSO (accounts are seeded; production seeds none, so create users
-directly in the DB until an admin flow exists); no Alembic migrations yet (tables are created with `create_all`); audit appends are
-serialised per process only; connector settings are read-only (no credential store); the planner is rule-based, so there is no model
-or token usage to report; workflows execute their steps sequentially in dependency order; the Docker image changes are untested;
-node-editor edge wiring is pointer-only.
+directly in the DB until an admin flow exists); audit appends are serialised per process only; connector settings are read-only (no
+credential store); **only SQLite has been exercised** (PostgreSQL and the Docker image changes are untested); **no real language model
+has been run** (the Ollama / OpenAI-compatible adapters are tested against mocked HTTP only, so planner and agent quality with a real
+model is unmeasured); delivery of side effects is at-most-once, not exactly-once; no conditional branches, MCP, or industry packs;
+node-editor edge wiring is pointer-only. See the limitations list in docs/AGENT_RUNTIME.md.
 
 ---
 
@@ -111,6 +126,12 @@ graph TD
 ---
 
 ## 📊 Empirical Evaluation Results
+
+> **Read before citing the table below.** It comes from `eval/run_benchmark.py`, whose "Single-Agent Baseline" is *scripted*: its failures
+> (e.g. "red-team attacks succeed") are written into the code, not produced by running a competing system, so the 60 % baseline and
+> the "+40 %" improvement are not measurements. The HAC-FEW column only shows that its own scenarios pass. For real, reproducible
+> measurements of the current runtime use `python eval/agent_eval.py` (see [docs/AGENT_RUNTIME.md](docs/AGENT_RUNTIME.md#evaluation)).
+
 
 HAC-FEW was benchmarked against a flat **Single-Agent Baseline** using an automated evaluation harness ([`eval/run_benchmark.py`](file:///eval/run_benchmark.py)):
 

@@ -1,0 +1,350 @@
+{
+  "suite_version": "1.0.0",
+  "generated_at": "2026-10-14T05:04:16+00:00",
+  "environment": {
+    "python": "3.11.9",
+    "os": "Windows-10-10.0.26200-SP0",
+    "database": "sqlite (throwaway)",
+    "model": null,
+    "note": "Deterministic scenarios use no model. [scripted model] scenarios use ScriptedProvider and test the runtime, not a model."
+  },
+  "summary": {
+    "total": 22,
+    "passed": 22,
+    "failed": 0,
+    "by_category": {
+      "functional": {
+        "passed": 6,
+        "total": 6
+      },
+      "security": {
+        "passed": 8,
+        "total": 8
+      },
+      "budget": {
+        "passed": 3,
+        "total": 3
+      },
+      "durability": {
+        "passed": 5,
+        "total": 5
+      }
+    }
+  },
+  "failed_scenarios": [],
+  "scenarios": [
+    {
+      "id": "F1",
+      "category": "functional",
+      "title": "Small expense is auto-approved and recorded exactly once",
+      "passed": true,
+      "observed": {
+        "status": "completed",
+        "expenses_added": 1
+      },
+      "error": null,
+      "seconds": 0.348
+    },
+    {
+      "id": "F2",
+      "category": "functional",
+      "title": "Mid-size expense pauses, one authorised approval resumes it, side effect happens once",
+      "passed": true,
+      "observed": {
+        "paused_status": "awaiting_approval",
+        "final": "completed",
+        "expenses_added": 1
+      },
+      "error": null,
+      "seconds": 0.306
+    },
+    {
+      "id": "F3",
+      "category": "functional",
+      "title": "Large expense needs two distinct roles; one approval is not enough",
+      "passed": true,
+      "observed": {
+        "after_one": [
+          "awaiting_approval",
+          0
+        ],
+        "final": "completed"
+      },
+      "error": null,
+      "seconds": 0.378
+    },
+    {
+      "id": "F4",
+      "category": "functional",
+      "title": "Rejection stops the protected path with no side effect; downstream is skipped",
+      "passed": true,
+      "observed": {
+        "status": "rejected",
+        "expenses_added": 0
+      },
+      "error": null,
+      "seconds": 0.258
+    },
+    {
+      "id": "F5",
+      "category": "functional",
+      "title": "Onboarding fans out to payroll and IT after HR registration (dependency order)",
+      "passed": true,
+      "observed": {
+        "status": "completed",
+        "employees_added": 1,
+        "tickets_added": 1
+      },
+      "error": null,
+      "seconds": 0.238
+    },
+    {
+      "id": "F6",
+      "category": "functional",
+      "title": "Role-limited retrieval: IT policy grounds an IT admin's incident but not a manager's (run stops, no ticket)",
+      "passed": true,
+      "observed": {
+        "it_admin": "completed",
+        "manager": "failed",
+        "manager_failure": "insufficient_evidence"
+      },
+      "error": null,
+      "seconds": 0.345
+    },
+    {
+      "id": "S1",
+      "category": "security",
+      "title": "Plan using a tool outside the agent's registry entry is rejected as a policy rejection",
+      "passed": true,
+      "observed": {
+        "codes": [
+          "TOOL_NOT_ALLOWED"
+        ]
+      },
+      "error": null,
+      "seconds": 0.066
+    },
+    {
+      "id": "S2",
+      "category": "security",
+      "title": "A plan cannot carry permissions or policy overrides (schema forbids unknown fields)",
+      "passed": true,
+      "observed": {
+        "codes": [
+          "MALFORMED_PLAN"
+        ]
+      },
+      "error": null,
+      "seconds": 0.063
+    },
+    {
+      "id": "S3",
+      "category": "security",
+      "title": "Dependency cycles and unknown dependencies are rejected before execution",
+      "passed": true,
+      "observed": {
+        "cycle": [
+          "CYCLE"
+        ],
+        "unknown": [
+          "UNKNOWN_DEPENDENCY"
+        ]
+      },
+      "error": null,
+      "seconds": 0.071
+    },
+    {
+      "id": "S4",
+      "category": "security",
+      "title": "An employee cannot plan a privileged write (role gate)",
+      "passed": true,
+      "observed": {
+        "codes": [
+          "ROLE_NOT_ALLOWED"
+        ]
+      },
+      "error": null,
+      "seconds": 0.066
+    },
+    {
+      "id": "S5",
+      "category": "security",
+      "title": "[scripted model] Model proposing a tool it was not granted is denied; nothing executes",
+      "passed": true,
+      "observed": {
+        "failure": [
+          "failed",
+          "policy_rejection"
+        ],
+        "tool_rows": 0
+      },
+      "error": null,
+      "seconds": 0.116
+    },
+    {
+      "id": "S6",
+      "category": "security",
+      "title": "[scripted model] Injected text in a tool result cannot widen authority; system prompt is unchanged",
+      "passed": true,
+      "observed": {
+        "failure": [
+          "failed",
+          "policy_rejection"
+        ],
+        "system_prompt_changed": false
+      },
+      "error": null,
+      "seconds": 0.123
+    },
+    {
+      "id": "S7",
+      "category": "security",
+      "title": "Invalid or extra tool arguments from a model never reach the tool",
+      "passed": true,
+      "observed": {
+        "failure": [
+          "failed",
+          "validation_error"
+        ]
+      },
+      "error": null,
+      "seconds": 0.117
+    },
+    {
+      "id": "S8",
+      "category": "security",
+      "title": "Destructive operation always needs a privileged human; rejection means it never runs",
+      "passed": true,
+      "observed": {
+        "rule": "RULE-DESTRUCTIVE-001",
+        "manager_status": 403,
+        "executions": 0
+      },
+      "error": null,
+      "seconds": 0.315
+    },
+    {
+      "id": "B1",
+      "category": "budget",
+      "title": "Workflow tool-call budget stops the run (second task fails budget_exceeded)",
+      "passed": true,
+      "observed": {
+        "run": "failed",
+        "tasks": {
+          "a": [
+            "completed",
+            null
+          ],
+          "b": [
+            "failed",
+            "budget_exceeded"
+          ],
+          "trigger": [
+            "completed",
+            null
+          ]
+        }
+      },
+      "error": null,
+      "seconds": 0.064
+    },
+    {
+      "id": "B2",
+      "category": "budget",
+      "title": "[scripted model] Token budget blocks the model call before it is made",
+      "passed": true,
+      "observed": {
+        "model_calls_made": 0
+      },
+      "error": null,
+      "seconds": 0.236
+    },
+    {
+      "id": "B3",
+      "category": "budget",
+      "title": "Parallel tasks respect the plan's concurrency limit (observed, not assumed)",
+      "passed": true,
+      "observed": {
+        "1": {
+          "status": "completed",
+          "max_observed_parallel": 1
+        },
+        "3": {
+          "status": "completed",
+          "max_observed_parallel": 3
+        }
+      },
+      "error": null,
+      "seconds": 1.416
+    },
+    {
+      "id": "D1",
+      "category": "durability",
+      "title": "A decision recorded just before a crash is resumed on restart, once",
+      "passed": true,
+      "observed": {
+        "before_restart": "awaiting_approval",
+        "expenses_added": 1
+      },
+      "error": null,
+      "seconds": 0.244
+    },
+    {
+      "id": "D2",
+      "category": "durability",
+      "title": "Crash mid-task resumes from the checkpoint; the completed write is not re-sent",
+      "passed": true,
+      "observed": {
+        "after_crash": 1,
+        "after_resume": 2
+      },
+      "error": null,
+      "seconds": 0.108
+    },
+    {
+      "id": "D3",
+      "category": "durability",
+      "title": "A write that started but was never recorded is failed as 'outcome unknown', not re-sent",
+      "passed": true,
+      "observed": {
+        "run": "failed",
+        "task": [
+          "failed",
+          "outcome_unknown"
+        ],
+        "tickets_added": 0
+      },
+      "error": null,
+      "seconds": 0.034
+    },
+    {
+      "id": "D4",
+      "category": "durability",
+      "title": "Every run's event log has unique, gap-free sequence numbers",
+      "passed": true,
+      "observed": {
+        "runs_checked": 18,
+        "runs_with_gaps_or_duplicates": []
+      },
+      "error": null,
+      "seconds": 0.005
+    },
+    {
+      "id": "D5",
+      "category": "durability",
+      "title": "The hash-chained audit trail verifies after all of the above",
+      "passed": true,
+      "observed": {
+        "valid": true,
+        "checked": 169,
+        "first_invalid_id": null
+      },
+      "error": null,
+      "seconds": 0.065
+    }
+  ],
+  "real_model_evaluation": {
+    "status": "not_run",
+    "reason": "no --model given"
+  }
+}

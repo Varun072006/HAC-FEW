@@ -32,8 +32,8 @@ def templates(_: User = Depends(require("workflow:read"))):
 
 
 @router.post("/workflows/validate", response_model=s.ValidationResult)
-def validate(defn: s.WorkflowDefinition, user: User = Depends(require("workflow:read"))):
-    issues = validate_definition(_defn(defn), user_role=user.role)
+def validate(defn: s.WorkflowDefinition, db: Session = Depends(get_session), user: User = Depends(require("workflow:read"))):
+    issues = validate_definition(_defn(defn), user_role=user.role, db=db)
     return s.ValidationResult(valid=not has_errors(issues), issues=issues)
 
 
@@ -52,7 +52,7 @@ def create_workflow(body: s.WorkflowCreate, db: Session = Depends(get_session),
     db.commit()
     audit.record(db, actor_type="user", actor_id=user.id, actor_role=user.role, action="workflow.created",
                  outcome="success", resource_type="workflow", resource_id=w.id, detail={"name": w.name})
-    return workflow_detail(w, user.role)
+    return workflow_detail(w, user.role, db)
 
 
 @router.get("/workflows/{workflow_id}", response_model=s.WorkflowDetail)
@@ -60,7 +60,7 @@ def get_workflow(workflow_id: str, db: Session = Depends(get_session), user: Use
     w = db.get(Workflow, workflow_id)
     if not w:
         raise HTTPException(404, "Workflow not found.")
-    return workflow_detail(w, user.role)
+    return workflow_detail(w, user.role, db)
 
 
 @router.put("/workflows/{workflow_id}", response_model=s.WorkflowDetail)
@@ -83,7 +83,7 @@ def update_workflow(workflow_id: str, body: s.WorkflowUpdate, db: Session = Depe
     db.commit()
     audit.record(db, actor_type="user", actor_id=user.id, actor_role=user.role, action="workflow.updated",
                  outcome="success", resource_type="workflow", resource_id=w.id, detail={"version": w.version})
-    return workflow_detail(w, user.role)
+    return workflow_detail(w, user.role, db)
 
 
 @router.delete("/workflows/{workflow_id}", status_code=status.HTTP_204_NO_CONTENT)

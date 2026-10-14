@@ -1,4 +1,6 @@
+import { useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
+import { useAgents, useTools } from '../lib/queries'
 import type { CatalogNode, CatalogParam } from '../api/client'
 import type { RefOption } from '../lib/references'
 import { Button, Field, IconButton, Input, Select, Textarea, Chip } from './ui'
@@ -21,14 +23,62 @@ function RefPicker({ refs, onPick, id }: { refs: RefOption[]; onPick: (v: string
   )
 }
 
-function ParamInput({ nodeId, p, value, onChange, refs, readOnly }: {
-  nodeId: string; p: CatalogParam; value: unknown; onChange: (v: unknown) => void; refs: RefOption[]; readOnly: boolean
+/** Structured (JSON) parameter. Keeps the raw text while it is invalid so typing is never lost. */
+function JsonParam({ id, value, onChange, readOnly }: { id: string; value: unknown; onChange: (v: unknown) => void; readOnly: boolean }) {
+  const [text, setText] = useState(() => JSON.stringify(value ?? null, null, 2))
+  const [err, setErr] = useState<string | null>(null)
+  const [last, setLast] = useState(value)
+  if (value !== last && JSON.stringify(value) !== JSON.stringify(safeParse(text))) { setLast(value); setText(JSON.stringify(value ?? null, null, 2)); setErr(null) }
+  return (
+    <>
+      <Textarea id={id} disabled={readOnly} className="mono min-h-[110px] text-xs" aria-invalid={!!err} value={text}
+        onChange={(e) => { setText(e.target.value); try { const v = JSON.parse(e.target.value); setErr(null); setLast(v); onChange(v) } catch (x) { setErr((x as Error).message) } }} />
+      {err && <p className="mt-1 text-xs text-bad-ink" role="alert">Not valid JSON yet: {err}</p>}
+    </>
+  )
+}
+const safeParse = (t: string): unknown => { try { return JSON.parse(t) } catch { return undefined } }
+
+/** Appends a scaffolded call for one of the chosen agent's own tools; the server still validates it. */
+function ToolAdder({ agentId, ops, onChange }: { agentId: string; ops: unknown; onChange: (v: unknown) => void }) {
+  const agents = useAgents()
+  const tools = useTools()
+  const allowed = agents.data?.find((a) => a.id === agentId)?.tools ?? []
+  if (!agentId || !allowed.length) return <p className="mt-1 text-xs text-ink-2">Choose an agent to add tool calls from its allowed tools.</p>
+  return (
+    <Select aria-label="Add a tool call for this agent" value="" className="mt-1 h-8 text-xs"
+      onChange={(e) => {
+        const t = tools.data?.find((x) => x.name === e.target.value); if (!t) return
+        const props = ((t.input_schema as { properties?: Record<string, { default?: unknown; type?: string }> }).properties) ?? {}
+        const args = Object.fromEntries(Object.entries(props).map(([k, v]) => [k, v.default ?? (v.type === 'number' ? 0 : v.type === 'boolean' ? true : '')]))
+        onChange([...(Array.isArray(ops) ? ops : []), { tool: t.name, arguments: args }])
+      }}>
+      <option value="">Add tool call…</option>
+      {allowed.map((n) => <option key={n} value={n}>{n} ({tools.data?.find((x) => x.name === n)?.effect ?? '…'})</option>)}
+    </Select>
+  )
+}
+
+function ParamInput({ nodeId, p, value, onChange, refs, readOnly, siblings }: {
+  nodeId: string; p: CatalogParam; value: unknown; onChange: (v: unknown) => void; refs: RefOption[]; readOnly: boolean; siblings: Record<string, unknown>
 }) {
+  const agents = useAgents()
   const id = `${nodeId}-${p.name}`
   const str = value === undefined || value === null ? '' : String(value)
   const append = (r: string) => onChange(p.type === 'boolean' || p.type === 'select' ? r : `${str}${r}`)
   let control
-  if (p.type === 'boolean') {
+  if (p.name === 'agent_id' && p.type === 'string') {
+    const list = (agents.data ?? []).filter((a) => a.level >= 1 && (a.status === 'active' || a.id === value))
+    control = (
+      <Select id={id} disabled={readOnly} value={str} onChange={(e) => onChange(e.target.value)}>
+        <option value="">Select an agent…</option>
+        {list.map((a) => <option key={a.id} value={a.id}>{a.name} · L{a.level}{a.status !== 'active' ? ` (${a.status})` : ''}</option>)}
+      </Select>
+    )
+  } else if (p.type === 'json') {
+    control = <><JsonParam id={id} value={value} onChange={onChange} readOnly={readOnly} />
+      {p.name === 'operations' && !readOnly && <ToolAdder agentId={String(siblings.agent_id ?? '')} ops={value} onChange={onChange} />}</>
+  } else if (p.type === 'boolean') {
     const isRef = typeof value === 'string' && value.includes('{{')
     control = (
       <Select id={id} disabled={readOnly} value={isRef ? String(value) : String(value ?? true)}
@@ -54,7 +104,7 @@ function ParamInput({ nodeId, p, value, onChange, refs, readOnly }: {
   return (
     <Field label={p.label} htmlFor={id} required={p.required} hint={p.help || undefined}>
       {control}
-      {!readOnly && <RefPicker id={id} refs={refs} onPick={append} />}
+      {!readOnly && p.type !== 'json' && p.name !== 'agent_id' && <RefPicker id={id} refs={refs} onPick={append} />}
     </Field>
   )
 }
@@ -117,7 +167,7 @@ export function NodeInspector({ nodeId, spec, label, params, refs, readOnly, onL
       {spec.kind === 'trigger' ? (
         <TriggerFields nodeId={nodeId} readOnly={readOnly} fields={(params.fields as TriggerField[]) ?? []} onChange={(f) => onParam('fields', f)} />
       ) : spec.params.map((p) => (
-        <ParamInput key={p.name} nodeId={nodeId} p={p} readOnly={readOnly} refs={refs}
+        <ParamInput key={p.name} nodeId={nodeId} p={p} readOnly={readOnly} refs={refs} siblings={params}
           value={params[p.name] ?? p.default} onChange={(v) => onParam(p.name, v)} />
       ))}
       {spec.outputs.length > 0 && (

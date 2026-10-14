@@ -10,7 +10,7 @@ export function RunGraph({ run, onSelect, selected }: { run: RunDetail; onSelect
     const s = states.get(n.id)
     return {
       id: n.id, type: 'hac', position: n.position ?? { x: 0, y: 0 }, selected: selected === n.id, draggable: false, connectable: false,
-      data: { nodeType: n.type, label: n.label ?? s?.label ?? n.id, agent: s?.agent, status: s?.status ?? 'pending', latencyMs: s?.latency_ms },
+      data: { nodeType: n.type, label: n.label ?? s?.label ?? n.id, agent: s?.agent, agentLevel: s?.delegation?.length ? s.delegation.length - 1 : undefined, status: s?.status ?? 'pending', latencyMs: s?.latency_ms },
     }
   }), [run.definition.nodes, states, selected])
   const edges = useMemo(() => run.definition.edges.map((e) => ({

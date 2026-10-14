@@ -373,7 +373,8 @@ def test_agent_connector_policy_and_usage_registries_are_real(client):
     pol = client.get(f"{API}/policies", headers=admin).json()
     assert {r["rule_id"] for r in pol["rules"]} >= {"RULE-FIN-TIER-1", "RULE-FIN-TIER-2", "RULE-FIN-TIER-3"}
     usage = client.get(f"{API}/usage", headers=admin).json()
-    assert usage["llm_backed"] is False and usage["llm_calls"] == 0 and usage["total_node_runs"] > 0
+    # truthful whatever ran before: model usage is reported only if model-backed tasks actually ran
+    assert usage["llm_backed"] == (usage["llm_calls"] > 0) and usage["total_node_runs"] > 0
     ov = client.get(f"{API}/overview", headers=admin).json()
     assert ov["runs_total"] == sum(ov["runs_by_status"].values())
 
