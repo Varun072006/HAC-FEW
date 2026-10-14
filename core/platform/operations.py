@@ -81,8 +81,9 @@ class OpOutcome:
     attempts: int = 1
 
 
-def idempotency_key(run_id: str, node_id: str, op_index: int, tool: str) -> str:
-    return hashlib.sha256(f"{run_id}|{node_id}|{op_index}|{tool}".encode()).hexdigest()
+def idempotency_key(run_id: str, node_id: str, op_index: int, tool: str, epoch: int = 0) -> str:
+    base = f"{run_id}|{node_id}|{op_index}|{tool}"
+    return hashlib.sha256((base if not epoch else f"{base}|{epoch}").encode()).hexdigest()   # epoch 0 keeps pre-retry keys unchanged
 
 
 def backoff_delay(retry: dict, attempt: int) -> float:
@@ -131,6 +132,10 @@ def decide_policy(tc: TaskCtx, spec, args: dict) -> dict:
     decision = GovernancePolicyEngine.evaluate_tool_execution(tc.department, spec.name, args, user_role=tc.user.role,
                                                               allowed_tools=tc.agent_cfg["allowed_tools"])
     d = decision.model_dump(mode="json")
+    if d["allowed"] and spec.policy_hook is not None:
+        override = spec.policy_hook(tc, args)   # run-state aware tightening (e.g. approval bound to exact report content)
+        if override:
+            d.update(override)
     if d["allowed"] and spec.effect == "destructive" and not d["requires_human_approval"]:
         d.update(requires_human_approval=True, risk_level="high", rule_id="RULE-DESTRUCTIVE-001",
                  reason="Destructive operations always require human approval.")
@@ -221,7 +226,7 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
     tc.check_live()
 
     # 5. idempotency: one execution per (run, node, operation slot)
-    key = idempotency_key(run.id, nr.node_id, op_index, tool_name)
+    key = idempotency_key(run.id, nr.node_id, op_index, tool_name, nr.epoch or 0)
     row = db.query(ToolExecution).filter(ToolExecution.idempotency_key == key).first()
     if row is not None:
         if row.status == "succeeded":
@@ -230,7 +235,7 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
             return OpOutcome("ok", tool_name, spec.effect, data=payload.get("data", {}), evidence=payload.get("evidence", []),
                              abstained=payload.get("abstained", False), latency_ms=row.latency_ms or 0, replayed=True,
                              policy=policy, approved_by=approved_by)
-        if spec.effect != "read":
+        if spec.effect != "read" and not spec.idempotent:
             note = ("Outcome unknown: a previous attempt started this operation and its result was not recorded. "
                     "Verify in the target system before retrying." if row.status == "started"
                     else f"This operation already failed once and is not re-sent: {row.error}")
@@ -250,8 +255,10 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
 
     # 6. execute (reads may retry transient failures with bounded backoff; writes never auto-retry)
     retry = tc.agent_cfg["retry"]
-    max_retries = min(spec.max_retries, retry["max_retries"]) if spec.effect == "read" else 0
-    ctx = ToolContext(run.id, nr.node_id, tc.agent_id, tc.department, tc.user.role, tc.user.employee_id, approved_by)
+    retryable = spec.effect == "read" or spec.idempotent or spec.retry_transient_writes
+    max_retries = min(spec.max_retries, retry["max_retries"]) if retryable else 0
+    ctx = ToolContext(run.id, nr.node_id, tc.agent_id, tc.department, tc.user.role, tc.user.employee_id, approved_by,
+                      user_id=tc.user.id, epoch=nr.epoch or 0)
     attempt = 0
     while True:
         left = tc.remaining()
@@ -267,7 +274,7 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
             res, ms = fut.result(timeout=timeout)
             break
         except FutureTimeout:
-            if spec.effect == "read" and attempt < max_retries:
+            if retryable and spec.effect == "read" and attempt < max_retries:
                 attempt += 1
                 delay = backoff_delay(retry, attempt - 1)
                 emit(db, run.id, "node.retry", nr.node_id, {"tool": tool_name, "attempt": attempt, "delay_s": delay,
@@ -276,7 +283,7 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
                 continue
             return _timeout(tc, spec, op_index, key, policy, f"Tool '{tool_name}' timed out after {timeout:.1f}s.")
         except TransientToolError as exc:
-            if spec.effect == "read" and attempt < max_retries:
+            if retryable and attempt < max_retries:
                 attempt += 1
                 delay = backoff_delay(retry, attempt - 1)
                 emit(db, run.id, "node.retry", nr.node_id, {"tool": tool_name, "attempt": attempt, "delay_s": delay,
@@ -285,9 +292,10 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
                 continue
             emit(db, run.id, "tool.result", nr.node_id, {"tool": tool_name, "success": False, "error": str(exc)[:300],
                                                           "op_index": op_index})
-            note = "" if spec.effect == "read" else " Outcome unknown; verify in the target system before retrying."
+            safe = retryable   # a transient error from a retry-safe tool means nothing was sent
+            note = "" if safe else " Outcome unknown; verify in the target system before retrying."
             return OpOutcome("failed", tool_name, spec.effect, error=f"{exc}{note}", policy=policy,
-                             failure_class=EXECUTION if spec.effect == "read" else UNKNOWN, attempts=attempt + 1)
+                             failure_class=EXECUTION if safe else UNKNOWN, attempts=attempt + 1)
         except Exception as exc:
             note = "" if spec.effect == "read" else " Outcome unknown; verify in the target system before retrying."
             emit(db, run.id, "tool.result", nr.node_id, {"tool": tool_name, "success": False, "error": str(exc)[:300],
@@ -297,6 +305,11 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
 
     # 7. validate the result, record, audit
     missing = [k for k in spec.output_required if k not in (res.data or {})] if res.success else []
+    if res.success and spec.output_model is not None and not missing:
+        try:
+            spec.output_model.model_validate(res.data or {})
+        except ValidationError as exc:
+            missing = [".".join(map(str, e["loc"])) for e in exc.errors()[:5]]   # contract violation: treated like a missing field
     ok = res.success and not missing
     emit(db, run.id, "tool.result", nr.node_id, {"tool": tool_name, "success": ok, "latency_ms": ms, "op_index": op_index,
                                                   "error": res.error or (f"output missing {missing}" if missing else None),
@@ -309,8 +322,8 @@ def execute_operation(tc: TaskCtx, op_index: int, tool_name: str, raw_args: Any,
         return OpOutcome("failed", tool_name, spec.effect, error=f"Tool output failed validation: missing {missing}.",
                          failure_class=VALIDATION, policy=policy, latency_ms=ms)
     if not res.success:
-        return OpOutcome("failed", tool_name, spec.effect, error=res.error or "Tool call failed.", failure_class=EXECUTION,
-                         policy=policy, latency_ms=ms, data=res.data or {})
+        return OpOutcome("failed", tool_name, spec.effect, error=res.error or "Tool call failed.",
+                         failure_class=res.failure_class or EXECUTION, policy=policy, latency_ms=ms, data=res.data or {})
     return OpOutcome("ok", tool_name, spec.effect, data=res.data or {}, evidence=list(res.evidence), abstained=res.abstained,
                      latency_ms=ms, policy=policy, approved_by=approved_by, attempts=attempt + 1)
 

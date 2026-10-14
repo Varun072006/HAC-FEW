@@ -60,6 +60,7 @@ class EdgeDef(BaseModel):
     id: str
     source: str
     target: str
+    branch: Optional[Literal["true", "false"]] = Field(default=None, description="Set on edges leaving a condition step.")
 
 
 class WorkflowDefinition(BaseModel):

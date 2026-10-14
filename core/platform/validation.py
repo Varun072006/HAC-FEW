@@ -6,7 +6,7 @@ from typing import Any, Optional
 from core.platform.catalog import CATALOG
 
 REF = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
-FIELD_TYPES = {"string", "number", "boolean"}
+FIELD_TYPES = {"string", "number", "boolean", "file"}
 
 
 def refs_in(value: Any) -> list[str]:
@@ -142,6 +142,12 @@ def validate_definition(definition: dict, user_role: Optional[str] = None, agent
                 elif parts[1] not in ancestors(n["id"], edges):
                     issues.append(_issue("error", "REFERENCE_NOT_UPSTREAM",
                                          f"'{{{{{ref}}}}}' references '{parts[1]}', which is not upstream of this node.", n["id"]))
+                else:
+                    src_spec = CATALOG.get(src.get("type"))
+                    field = parts[3] if len(parts) > 3 else None
+                    if src_spec and src_spec.outputs and field and field not in src_spec.outputs:
+                        issues.append(_issue("error", "UNKNOWN_OUTPUT_FIELD",
+                                             f"'{{{{{ref}}}}}': step '{parts[1]}' ({src_spec.label}) provides {', '.join(src_spec.outputs)}; it has no '{field}'.", n["id"]))
             else:
                 issues.append(_issue("error", "BAD_REFERENCE",
                                      f"'{{{{{ref}}}}}' is not valid. Use trigger.<field> or nodes.<id>.output.<field>.", n["id"]))
@@ -152,6 +158,13 @@ def validate_definition(definition: dict, user_role: Optional[str] = None, agent
         if user_role and user_role not in spec.allowed_roles:
             issues.append(_issue("error", "ROLE_NOT_ALLOWED",
                                  f"Role '{user_role}' may not run '{spec.label}'.", n["id"]))
+
+    from core.platform.node_checks import STATIC
+    for n in nodes:
+        fn = STATIC.get(n.get("type"))
+        if fn and n.get("id") in by_id:
+            for sev, code, msg in fn(n, {"nodes": nodes, "edges": edges}):
+                issues.append(_issue(sev, code, msg, n["id"]))
 
     edge_ids = set()
     for e in edges:
@@ -166,6 +179,8 @@ def validate_definition(definition: dict, user_role: Optional[str] = None, agent
         edge_ids.add(key)
         if by_id[e["target"]].get("type") == "trigger.manual":
             issues.append(_issue("error", "TRIGGER_HAS_INPUT", "The trigger cannot have incoming edges.", e["target"]))
+        if e.get("branch") is not None and by_id[e["source"]].get("type") != "flow.condition":
+            issues.append(_issue("error", "BRANCH_ON_NON_CONDITION", "Only a condition step has true/false branches.", e["source"]))
 
     if topo_order([n for n in nodes if n.get("id")], [e for e in edges if e.get("source") in by_id and e.get("target") in by_id]) is None:
         issues.append(_issue("error", "CYCLE", "The workflow contains a cycle."))

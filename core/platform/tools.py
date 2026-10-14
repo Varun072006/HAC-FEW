@@ -33,6 +33,8 @@ class ToolContext:
     user_role: str
     user_employee_id: Optional[str] = None
     approved_by: Optional[str] = None
+    user_id: str = ""
+    epoch: int = 0              # bumped by a manual node retry so the retry gets a fresh artifact / idempotency slot
 
 
 @dataclass
@@ -42,6 +44,7 @@ class ToolResult:
     error: Optional[str] = None
     evidence: list = field(default_factory=list)   # citations / record ids this result is grounded in
     abstained: bool = False                        # retrieval found nothing it could stand behind
+    failure_class: Optional[str] = None            # e.g. validation_error: lets a tool say *why* it failed
 
 
 @dataclass(frozen=True)
@@ -60,6 +63,9 @@ class ToolSpec:
     idempotent: bool = False                      # safe to repeat with the same arguments
     needs_approval_context: bool = False          # handler receives ctx.approved_by after human approval
     owner_field: Optional[str] = None             # employees may only act on records where this arg is their own id
+    output_model: Optional[type] = None           # typed contract for what the tool returns (validated before any downstream use)
+    policy_hook: Optional[Callable[[Any, dict], Optional[dict]]] = None   # may tighten the policy decision using run state
+    retry_transient_writes: bool = False          # a TransientToolError from this write PROVES nothing was sent, so retrying is safe
 
     def schema(self) -> dict:
         return self.input_model.model_json_schema()
@@ -246,3 +252,6 @@ for _spec in [
              output_required=("all_passed",), idempotent=True),
 ]:
     register(_spec)
+
+
+from core.platform import tools_automation  # noqa: E402,F401  (registers the business-automation tools)

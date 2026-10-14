@@ -55,6 +55,7 @@ class Run(Base):
     budget = Column(JSON, nullable=True)           # workflow-level resource limits chosen at run creation
     agent_snapshot = Column(JSON, nullable=True)   # configs of every agent the run may use (version-pinned)
     cancel_requested = Column(Boolean, default=False, nullable=False)
+    result = Column(JSON, nullable=True)           # final record written by a "Record result" step (report ref, delivery status, counts)
     __table_args__ = (Index("ix_runs_status", "status"), Index("ix_runs_started_by", "started_by"))
 
 
@@ -84,6 +85,7 @@ class NodeRun(Base):
     usage = Column(JSON, nullable=True)            # model/tool usage for this task, with provenance
     checkpoint = Column(JSON, nullable=True)       # resumable agent state (completed ops, pending op)
     failure_class = Column(String(30), nullable=True)
+    epoch = Column(Integer, default=0, nullable=False, server_default="0")   # bumped by a manual retry: fresh idempotency slot
     __table_args__ = (UniqueConstraint("run_id", "node_id", name="uq_node_run"),)
 
 
@@ -214,3 +216,44 @@ class ToolExecution(Base):
     latency_ms = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint("idempotency_key", name="uq_tool_idem"),
                       Index("ix_tool_exec_run", "run_id"))
+
+
+class StoredFile(Base):
+    """Metadata for a file held by a FileStore connector. Content never lives in this table."""
+    __tablename__ = "files"
+    id = Column(String(40), primary_key=True)
+    name = Column(String(200), nullable=False)
+    kind = Column(String(20), nullable=False)          # upload | dataset | report
+    content_type = Column(String(120), nullable=False)
+    size = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    storage_key = Column(String(200), nullable=False)
+    sensitivity = Column(String(20), nullable=False, default="internal")   # internal | confidential
+    uploaded_by = Column(String(40), ForeignKey("users.id"), nullable=False)
+    run_id = Column(String(40), nullable=True)
+    node_id = Column(String(60), nullable=True)
+    meta = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    __table_args__ = (Index("ix_files_run", "run_id"),)
+
+
+class EmailDelivery(Base):
+    """One outbound message and what actually happened to it. `mode` says whether a real provider was used."""
+    __tablename__ = "email_deliveries"
+    id = Column(String(40), primary_key=True)
+    run_id = Column(String(40), nullable=False)
+    node_id = Column(String(60), nullable=False)
+    connector = Column(String(40), nullable=False)
+    mode = Column(String(10), nullable=False)          # mock | smtp
+    sender = Column(String(200), nullable=False)
+    recipients = Column(JSON, nullable=False)
+    subject = Column(String(300), nullable=False)
+    body_sha256 = Column(String(64), nullable=False)
+    attachments = Column(JSON, nullable=False)         # file ids
+    status = Column(String(12), nullable=False, default="pending")   # pending | sent | failed
+    attempts = Column(Integer, nullable=False, default=0)
+    provider_message_id = Column(String(200), nullable=True)
+    error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=utcnow, nullable=False)
+    sent_at = Column(DateTime, nullable=True)
+    __table_args__ = (Index("ix_email_run", "run_id"),)

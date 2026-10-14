@@ -47,6 +47,9 @@ def coerce_param_types(spec, params: dict) -> dict:
                 out[p.name] = p.default
             continue
         v = out[p.name]
+        if not p.required and (v is None or (isinstance(v, str) and not v.strip())):
+            del out[p.name]            # an optional field left blank means "not provided"
+            continue
         if p.type == "number":
             out[p.name] = float(v)
         elif p.type == "boolean" and not isinstance(v, bool):

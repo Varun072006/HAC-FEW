@@ -107,7 +107,7 @@ def check_arguments(tool_name: str, args: Any) -> list[str]:
     spec = tools.get(tool_name)
     if spec is None or not isinstance(args, dict):
         return ["arguments must be an object"]
-    fields = spec.input_model.model_fields
+    fields = {(f.alias or n): f for n, f in spec.input_model.model_fields.items()}   # callers use aliases (e.g. "schema")
     errors = [f"unknown argument '{k}'" for k in args if k not in fields]
     for name, f in fields.items():
         if name not in args:
